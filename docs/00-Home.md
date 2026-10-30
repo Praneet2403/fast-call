@@ -21,7 +21,7 @@ updated: 2026-10-30
 **Planning:** [[Roadmap]] · [[Board]] · [[Sprint-01]]
 **Engineering:** [[Dev-Setup]] · [[Conventions]] · [[API-Spec]]
 **Learning:** [[Learning-Map]] · [[How-I-Use-AI]]
-**Evidence:** [[Benchmarks-Index]] · [[Postmortems-Index]]
+**Evidence:** [[Challenges-Log]] (interview stories) · [[Benchmarks-Index]] · [[Postmortems-Index]]
 
 ## How this vault works
 1. **Plan:** pick tasks from [[Board]] into the current sprint.

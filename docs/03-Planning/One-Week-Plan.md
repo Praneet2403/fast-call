@@ -33,22 +33,22 @@ updated: 2026-10-31
 ## Day 1: Sat Oct 31 · Foundations + simulator
 - [x] 🧱 Finish Phase 0: `allowBuilds: esbuild: true`, clean `package.json`, README stub, commit + push ⏱ 30m
 - [x] 🧑 **Domain: ambulance (emergency medical dispatch)** ⏱ 15m
-- [ ] 🧑 `packages/shared` types: `GeoPoint`, `Agent`, `AgentStatus`, `Capability`, `Priority`, `RequestState`, `DispatchRequest`, `LocationPing`, `Offer`, `Hospital` ⏱ 1.5h
-- [ ] 🧱 Root scripts (`dev`, `typecheck`, `test`) + `vitest` ⏱ 30m
-- [ ] 🧱 `apps/simulator` scaffold + env config (`AGENT_COUNT`, `PING_INTERVAL_MS`, `SEED`) ⏱ 30m
-- [ ] 🧑 Seeded RNG + haversine (with unit tests) ⏱ 1h
-- [ ] 🧑 Random-waypoint movement inside the Jaipur box (lat 26.80–27.00, lng 75.70–75.90) ⏱ 2h
-- [ ] 🧑 Pick 6–8 real Jaipur hospitals from OpenStreetMap → `hospitals.json` (name, lat/lng, `hasALSCare`) ⏱ 30m
-- [ ] 🧑 Tick loop printing positions; pings with jitter ⏱ 1h
+- [x] 🧑 `packages/shared` types: `GeoPoint`, `Agent`, `AgentStatus`, `Capability`, `Priority`, `RequestState`, `DispatchRequest`, `LocationPing`, `Offer`, `Hospital` ⏱ 1.5h
+- [x] 🧱 Root scripts (`dev`, `typecheck`, `test`) + `vitest` ⏱ 30m
+- [x] 🧱 `apps/simulator` scaffold + env config (`AGENT_COUNT`, `PING_INTERVAL_MS`, `SEED`) ⏱ 30m
+- [x] 🧑 Seeded RNG + haversine (with unit tests) ⏱ 1h
+- [x] 🧑 Random-waypoint movement inside the Jaipur box (lat 26.80–27.00, lng 75.70–75.90) ⏱ 2h
+- [x] 🧑 Pick 6–8 real Jaipur hospitals from OpenStreetMap → `hospitals.json` (name, lat/lng, `hasALSCare`) ⏱ 30m
+- [x] 🧑 Tick loop printing positions; pings with jitter ⏱ 1h
 
 ✅ **Exit:** `pnpm --filter simulator dev` logs 1,000 agents moving believably; tests pass; pushed.
 
 ## Day 2: Sun Nov 1 · Ingest + live map
-- [ ] 🧱 `apps/api`: Fastify + `@fastify/websocket` + `ioredis` ⏱ 45m
-- [ ] 🧑 `/ws/agents`: validate pings with `zod`, drop out-of-order ones ⏱ 1h
-- [ ] 🧑 Redis writes in a **pipeline**: `GEOADD agents:geo`, `HSET agent:{id}`, heartbeat `SET agent:{id}:hb EX 15` ⏱ 1.5h
-- [ ] 🧑 Simulator connects and streams pings ⏱ 45m
-- [ ] 🧑 `/ws/dashboard`: broadcast **one batched snapshot per second** ⏱ 1.5h
+- [x] 🧱 `apps/api`: Fastify + `@fastify/websocket` + `ioredis` ⏱ 45m
+- [x] 🧑 `/ws/agents`: validate pings with `zod`, drop out-of-order ones ⏱ 1h
+- [x] 🧑 Redis writes in a **pipeline**: `GEOADD agents:geo`, `HSET agent:{id}`, heartbeat `SET agent:{id}:hb EX 15` ⏱ 1.5h
+- [x] 🧑 Simulator connects and streams pings ⏱ 45m
+- [x] 🧑 `/ws/dashboard`: broadcast **one batched snapshot per second** ⏱ 1.5h
 - [ ] 🧱 `apps/dashboard`: Vite + React + MapLibre + free tiles (OpenFreeMap) ⏱ 1h
 - [ ] 🧑 Agents as a GeoJSON circle layer, coloured by status; header with counts + median freshness ⏱ 2h
 
