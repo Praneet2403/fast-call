@@ -4,14 +4,22 @@
   "type": "module",
   "packageManager": "pnpm@12.16.1",
   "devEngines": {
-    "packageManager": { "name": "pnpm", "version": "12.16.1", "onFail": "download" }
+    "packageManager": {
+      "name": "pnpm",
+      "version": "12.16.1",
+      "onFail": "download"
+    }
   },
   "scripts": {
-    "typecheck": "pnpm -r --if-present run typecheck"
+    "typecheck": "pnpm -r --if-present run typecheck",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "dev:sim": "pnpm --filter @fast-call/simulator dev"
   },
   "devDependencies": {
     "@types/node": "^26.6.6",
     "tsx": "^4.23.15",
-    "typescript": "^7.0.2"
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.5"
   }
 }

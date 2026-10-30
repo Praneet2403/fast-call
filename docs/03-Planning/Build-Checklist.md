@@ -51,19 +51,19 @@ updated: 2026-10-31
 - [x] 🧱 Root `.gitignore`
 - [x] 🧱 pnpm workspace (`apps/*`, `packages/*`) + `tsconfig.base.json`
 - [x] 🧱 `docker-compose.yml`: Postgres+PostGIS (arm64 image) + Redis
-- [ ] 🧱 Fix `allowBuilds: esbuild: true`, clean root `package.json`, add `README.md`, commit + push
+- [x] 🧱 Fix `allowBuilds: esbuild: true`, clean root `package.json`, add `README.md`, commit + push
 - [x] 🧑 **Domain: ambulance (emergency medical dispatch).** Drives capabilities (BLS/ALS), priorities (P1–P3) and SLAs.
-- [ ] 🧑 `packages/shared`: `GeoPoint`, `Agent`, `AgentStatus`, `Capability`, `Priority`, `RequestState`, `DispatchRequest`, `LocationPing`, `Offer`, `Hospital`
+- [x] 🧑 `packages/shared`: `GeoPoint`, `Agent`, `AgentStatus`, `Capability`, `Priority`, `RequestState`, `DispatchRequest`, `LocationPing`, `Offer`, `Hospital`
   - ✅ `pnpm exec tsc -p packages/shared` passes and the types have been reviewed
-- [ ] 🧱 Root scripts: `dev`, `typecheck`, `test`; install `vitest`
+- [x] 🧱 Root scripts: `dev`, `typecheck`, `test`; install `vitest`
 
 ## Phase 1a: Simulator (Day 1, afternoon)
-- [ ] 🧱 `apps/simulator` scaffold + env config (`AGENT_COUNT`, `PING_INTERVAL_MS`, `SEED`)
-- [ ] 🧑 Seeded RNG (every run can be replayed exactly; needed for the Day 6 A/B test)
-- [ ] 🧑 Haversine distance + unit tests
-- [ ] 🧑 Random-waypoint movement inside the Jaipur box (lat 26.80–27.00, lng 75.70–75.90)
+- [x] 🧱 `apps/simulator` scaffold + env config (`AGENT_COUNT`, `PING_INTERVAL_MS`, `SEED`)
+- [x] 🧑 Seeded RNG (every run can be replayed exactly; needed for the Day 6 A/B test)
+- [x] 🧑 Haversine distance + unit tests
+- [x] 🧑 Random-waypoint movement inside the Jaipur box (lat 26.80–27.00, lng 75.70–75.90)
 - [ ] 🧑 Pick 6–8 real Jaipur hospitals from OpenStreetMap → `hospitals.json` (name, lat/lng, `hasALSCare`)
-- [ ] 🧑 Tick loop; pings with jitter so agents don't all fire at once
+- [x] 🧑 Tick loop; pings with jitter so agents don't all fire at once
   - ✅ 1,000 agents logged moving believably (no teleporting); tests pass; pushed
 
 ## Phase 1b: Ingest + live map (Day 2)

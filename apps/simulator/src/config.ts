@@ -1,0 +1,51 @@
+function intEnv(name: string, fallback: number, min = 0): number {
+  const raw = process.env[name];
+  if (raw === undefined || raw === '') return fallback;
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n < min) {
+    throw new Error(`${name} must be an integer >= ${min}, got "${raw}"`);
+  }
+  return n;
+}
+
+function floatEnv(name: string, fallback: number, min: number, max: number): number {
+  const raw = process.env[name];
+  if (raw === undefined || raw === '') return fallback;
+  const n = Number(raw);
+  if (Number.isNaN(n) || n < min || n > max) {
+    throw new Error(`${name} must be a number in [${min}, ${max}], got "${raw}"`);
+  }
+  return n;
+}
+
+export interface SimConfig {
+  agentCount: number;
+  seed: number;
+  /** Fixed simulation step. Movement depends only on seed + tick count, so runs are replayable. */
+  tickMs: number;
+  pingIntervalMs: number;
+  /** Each ping is scheduled at interval ± jitter so agents don't all fire in the same tick. */
+  pingJitterMs: number;
+  /** Share of the fleet that is ALS (the rest is BLS). */
+  alsShare: number;
+  logEverySec: number;
+  /** Stop after this many seconds. 0 = run forever. */
+  durationSec: number;
+}
+
+export function loadConfig(): SimConfig {
+  const config: SimConfig = {
+    agentCount: intEnv('AGENT_COUNT', 1000, 1),
+    seed: intEnv('SEED', 42),
+    tickMs: intEnv('TICK_MS', 1000, 50),
+    pingIntervalMs: intEnv('PING_INTERVAL_MS', 4000, 100),
+    pingJitterMs: intEnv('PING_JITTER_MS', 1000),
+    alsShare: floatEnv('ALS_SHARE', 0.3, 0, 1),
+    logEverySec: intEnv('LOG_EVERY_SEC', 5, 1),
+    durationSec: intEnv('DURATION_SEC', 0),
+  };
+  if (config.pingJitterMs >= config.pingIntervalMs) {
+    throw new Error('PING_JITTER_MS must be smaller than PING_INTERVAL_MS');
+  }
+  return config;
+}
