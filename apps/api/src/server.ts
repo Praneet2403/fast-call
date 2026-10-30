@@ -1,10 +1,19 @@
 import Fastify from 'fastify';
 import websocket from '@fastify/websocket';
 import type { WebSocket } from 'ws';
+import type { RequestRepo } from '@fast-call/db';
 import type { ApiConfig } from './config.js';
 import { parseAgentMessage } from './messages.js';
+import type { DispatchQueue } from './queue.js';
+import { registerRequestRoutes } from './routes/requests.js';
 import { buildSnapshot } from './snapshot.js';
 import type { FleetStore } from './store.js';
+
+export interface ServerDeps {
+  store: FleetStore;
+  requests: RequestRepo;
+  queue: DispatchQueue;
+}
 
 export interface IngestCounters {
   received: number;
@@ -13,9 +22,11 @@ export interface IngestCounters {
   rejected: number;
 }
 
-export async function buildServer(config: ApiConfig, store: FleetStore) {
+export async function buildServer(config: ApiConfig, deps: ServerDeps) {
+  const { store } = deps;
   const app = Fastify({ logger: { level: process.env.LOG_LEVEL ?? 'info' } });
   await app.register(websocket);
+  registerRequestRoutes(app, deps);
 
   const counters: IngestCounters = { received: 0, accepted: 0, outOfOrder: 0, rejected: 0 };
   const dashboards = new Set<WebSocket>();

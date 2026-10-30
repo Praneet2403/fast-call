@@ -1,0 +1,17 @@
+{
+  "name": "@fast-call/db",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "migrate": "tsx src/migrate-cli.ts",
+    "typecheck": "tsc -p ."
+  },
+  "dependencies": {
+    "@fast-call/shared": "workspace:*",
+    "postgres": "^4.0.0"
+  }
+}

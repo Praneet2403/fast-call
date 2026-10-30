@@ -1,6 +1,8 @@
 import { isWithin, JAIPUR_BOUNDS } from '@fast-call/shared';
 import type { LocationPing } from '@fast-call/shared';
 import { RoadGraph } from '@fast-call/roads';
+import { CallSender } from './call-sender.js';
+import { CallGenerator } from './calls.js';
 import { loadConfig } from './config.js';
 import { Fleet } from './fleet.js';
 import type { PingSink } from './fleet.js';
@@ -37,6 +39,9 @@ const sink =
 if (sink instanceof WebSocketSink) sink.connect();
 
 const startedAt = Date.now();
+// Separate random stream for calls, so enabling calls never changes how the fleet moves.
+const calls = config.callsPerMin > 0 ? new CallGenerator(createRng(config.seed ^ 0x9e3779b9), graph, config.callsPerMin) : null;
+const callSender = new CallSender(config.apiUrl, String(startedAt));
 let lastLogAt = startedAt;
 let pingsSinceLog = 0;
 let maxStepSinceLog = 0;
@@ -44,7 +49,8 @@ let maxStepSinceLog = 0;
 const alsCount = fleet.agents.filter((a) => a.capability === 'ALS').length;
 console.log(
   `[sim] seed=${config.seed} agents=${config.agentCount} (ALS ${alsCount}, BLS ${config.agentCount - alsCount}) ` +
-    `tick=${config.tickMs}ms ping=${config.pingIntervalMs}±${config.pingJitterMs}ms ingest=${config.ingestUrl}`,
+    `tick=${config.tickMs}ms ping=${config.pingIntervalMs}±${config.pingJitterMs}ms ingest=${config.ingestUrl} ` +
+    `calls=${config.callsPerMin}/min avg → ${config.apiUrl}`,
 );
 
 fleet.schedulePings(startedAt);
@@ -54,6 +60,7 @@ const timer = setInterval(() => {
   const stats = fleet.tick(now, sink);
   pingsSinceLog += stats.pingsSent;
   maxStepSinceLog = Math.max(maxStepSinceLog, stats.maxStepMeters);
+  for (const call of calls?.due(now, config.tickMs) ?? []) callSender.send(call);
 
   if (now - lastLogAt >= config.logEverySec * 1000) {
     const secs = (now - lastLogAt) / 1000;
@@ -62,7 +69,8 @@ const timer = setInterval(() => {
     console.log(
       `[sim] t=${Math.round((now - startedAt) / 1000)}s pings/s=${(pingsSinceLog / secs).toFixed(1)} ` +
         `sent=${sink.sent} dropped=${sink.dropped} maxStep=${maxStepSinceLog.toFixed(1)}m outOfBounds=${outOfBounds} ` +
-        `${sample.id}@${sample.position.lat.toFixed(5)},${sample.position.lng.toFixed(5)}`,
+        `${sample.id}@${sample.position.lat.toFixed(5)},${sample.position.lng.toFixed(5)} ` +
+        `calls created=${callSender.created} replayed=${callSender.replayed} failed=${callSender.failed}`,
     );
     lastLogAt = now;
     pingsSinceLog = 0;

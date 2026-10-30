@@ -33,6 +33,10 @@ export interface SimConfig {
   durationSec: number;
   /** Ingest WebSocket URL, or "off" to run without sending pings anywhere. */
   ingestUrl: string;
+  /** Average emergency calls per minute over a day (shaped by time of day). 0 = no calls. */
+  callsPerMin: number;
+  /** Base URL of the request API. */
+  apiUrl: string;
 }
 
 export function loadConfig(): SimConfig {
@@ -46,6 +50,8 @@ export function loadConfig(): SimConfig {
     logEverySec: intEnv('LOG_EVERY_SEC', 5, 1),
     durationSec: intEnv('DURATION_SEC', 0),
     ingestUrl: process.env.INGEST_URL ?? 'ws://127.0.0.1:4000/ws/agents',
+    callsPerMin: floatEnv('CALLS_PER_MIN', 6, 0, 10_000),
+    apiUrl: process.env.API_URL ?? 'http://127.0.0.1:4000',
   };
   if (config.pingJitterMs >= config.pingIntervalMs) {
     throw new Error('PING_JITTER_MS must be smaller than PING_INTERVAL_MS');

@@ -3,3 +3,5 @@ packages:
   - "packages/*"
 allowBuilds:
   esbuild: true
+  # Optional native add-on; prebuilt binaries + JS fallback, so no install script needed.
+  msgpackr-extract: false

@@ -114,6 +114,8 @@ describe('Fleet', () => {
     logEverySec: 5,
     durationSec: 0,
     ingestUrl: 'off',
+    callsPerMin: 0,
+    apiUrl: '',
   };
 
   it('pings each agent roughly once per interval', () => {

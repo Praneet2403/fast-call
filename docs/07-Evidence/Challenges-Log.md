@@ -17,6 +17,8 @@ updated: 2026-10-31
 | 3 | [[#3. Old GPS pings moving ambulances backwards]] | Distributed systems / Redis | "A race condition?" |
 | 4 | [[#4. Database image wouldn't run on Apple Silicon]] | DevOps / Docker | "Environment problems?" |
 | 5 | [[#5. Ambulances driving through a forest]] | Product realism / geospatial | "Something you noticed only by looking?" |
+| 6 | [[#6. One emergency, many retries: no duplicate ambulances]] | API design / Postgres concurrency | "How do you handle retries?" / "Idempotency?" |
+| 7 | [[#7. The schema that would never have been applied]] | Databases / DevOps | "A gotcha you avoided?" |
 
 ---
 
@@ -120,3 +122,32 @@ Typecheck, unit tests and the build **all passed**, and the feature was still br
 - *Why A\* and not Dijkstra?* Same optimal answer, but the heuristic points the search towards the goal, so it explores far fewer nodes.
 - *Why not call Google Maps or OSRM?* Rate limits, cost, network latency on every decision, and non-reproducible results. A local graph is deterministic and fast enough.
 - *What's simplified?* Roads are undirected (one-way streets are ignored; ambulances with sirens often bend that rule anyway), and speed is constant per trip, not per road type. Both are listed as known limits.
+
+---
+
+## 6. One emergency, many retries: no duplicate ambulances
+**Date:** 2026-10-31 · **Commit:** see `feat(requests)` (Day 3) · **Area:** request API, Postgres
+
+### 30-second answer
+> "When a caller's app times out, it retries. If the server had already saved the call, a naive API creates a *second* emergency, and two ambulances drive to one patient while someone else waits. Every POST carries an `Idempotency-Key`. The insert uses `ON CONFLICT DO NOTHING` on a unique index, so if 25 identical requests race, Postgres lets exactly one insert. The others wait for it to commit, then read and return the original with a 200. I proved it with a test that fires 25 concurrent creates: one row, one id, 24 replays. A key reused with a *different* body gets a 422, because that's a client bug, not a retry."
+
+### Details
+- **Why not "check if exists, then insert"?** Two requests can both check, both see nothing, and both insert. The unique index makes the database the referee.
+- **Crash between the DB commit and the queue enqueue?** A retried POST for a call still in `CREATED` enqueues again. The BullMQ job id is `match-{requestId}`, so a healthy call is never matched twice. Day 5's sweeper covers clients that never retry.
+- **The same idea everywhere:** the simulator reuses one key across its own retries, the queue dedupes by job id, and state changes use `onlyFrom` guards so a retried worker is a no-op.
+- **Tests:** `creates exactly one request when 25 identical POSTs race`; `handles 20 concurrent retries of one call` (HTTP level: one 201, nineteen 200, one id).
+- **Live check:** three identical `curl` POSTs → 201, 200, 200 (`Idempotent-Replayed: true`), and the queue grew by **one** job.
+
+### Related: state changes that can't interleave
+`transition()` does `SELECT … FOR UPDATE`, checks the lifecycle table, then updates the row and appends the audit event in **one transaction**. Test: 10 workers race to move the same call `MATCHING → OFFERED`, and exactly one wins. A partial unique index also makes Postgres **refuse to put one unit on two live calls**, and that test shows the audit event is rolled back too.
+
+---
+
+## 7. The schema that would never have been applied
+**Date:** 2026-10-31 · **Area:** Postgres / Docker
+
+### 30-second answer
+> "The plan said to put the schema in `/docker-entrypoint-initdb.d`. But Postgres's Docker image only runs those scripts when the data volume is **empty**, and mine was created days earlier. The schema would silently never have been applied on my machine, while working on a fresh clone. Instead the services apply an idempotent `schema.sql` (every statement is `IF NOT EXISTS`) on startup, inside a transaction with an advisory lock so two services can't migrate at the same moment."
+
+### Lesson
+"Works on a fresh machine" and "works on mine" are different states. Make setup steps idempotent and run them every time, instead of relying on first-run hooks.

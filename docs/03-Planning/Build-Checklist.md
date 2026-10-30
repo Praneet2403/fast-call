@@ -78,12 +78,12 @@ updated: 2026-10-31
   - ✅ 1,000 dots moving live; ~1 dashboard message/s in the network tab; GIF recorded
 
 ## Phase 2a: Database + state machine + request API (Day 3)
-- [ ] 🧑 `db/init.sql`: `requests` (`geography(Point)` + GiST index, `idempotency_key UNIQUE`), `offers`, `request_events`
-- [ ] 🧑 State machine: transition table + `transition()` that rejects illegal moves and writes the event **in the same transaction**
-- [ ] 🧑 Unit tests for legal and illegal transitions
-- [ ] 🧑 `POST /requests` (Idempotency-Key), `GET /requests/:id`, `POST /requests/:id/cancel`
-- [ ] 🧱 BullMQ queue; enqueue a `match` job on create
-- [ ] 🧑 Simulator request generator with **hotspots + time-of-day curve** (gives the Day 6 forecast something to learn)
+- [x] 🧑 `packages/db/schema.sql`: `requests` (`geography(Point)` + GiST, `idempotency_key UNIQUE`), `offers`, `request_events`, plus a unique index so a unit can never hold two live calls; applied by `migrate()` on startup
+- [x] 🧑 State machine: transition table + `transition()` that rejects illegal moves and writes the event **in the same transaction**
+- [x] 🧑 Unit tests for legal and illegal transitions
+- [x] 🧑 `POST /requests` (Idempotency-Key), `GET /requests/:id`, `POST /requests/:id/cancel`
+- [x] 🧱 BullMQ queue; enqueue a `match` job on create
+- [x] 🧑 Simulator request generator with **hotspots + time-of-day curve** (gives the Day 6 forecast something to learn)
   - ✅ Same POST twice → one row; illegal transition tests pass; jobs appear in the queue
 
 ## Phase 2b: Dispatcher (Day 4)

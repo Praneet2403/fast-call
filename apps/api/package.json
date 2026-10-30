@@ -9,8 +9,10 @@
     "typecheck": "tsc -p ."
   },
   "dependencies": {
+    "@fast-call/db": "workspace:*",
     "@fast-call/shared": "workspace:*",
     "@fastify/websocket": "^11.3.4",
+    "bullmq": "^6.5.1",
     "fastify": "^5.12.7",
     "ioredis": "^6.0.0",
     "ws": "^8.22.0",

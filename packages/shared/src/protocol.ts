@@ -16,6 +16,15 @@ export interface PingBatchMessage {
 
 export type AgentChannelMessage = RegisterMessage | PingBatchMessage;
 
+// ---- API → dispatcher: BullMQ queue ----
+
+export const DISPATCH_QUEUE = 'dispatch';
+
+/** Job "match": find and offer a unit for this request. */
+export interface MatchJobData {
+  requestId: string;
+}
+
 // ---- ingest → dashboards: ws /ws/dashboard ----
 
 /** STALE is derived, never stored: the unit's heartbeat has expired. */
