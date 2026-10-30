@@ -2,9 +2,12 @@ import type { Bounds, GeoPoint } from './types.js';
 
 export const EARTH_RADIUS_M = 6_371_000;
 
-/** Service area: central Jaipur (walled city, Malviya Nagar, Mansarovar, Vaishali Nagar, Jagatpura). */
+/**
+ * Service area: walled city, Malviya Nagar, Mansarovar, Vaishali Nagar, Jagatpura, down to Sitapura.
+ * minLat is 26.76 so the southern hospitals (Mahatma Gandhi, Bombay Hospital) are inside the box.
+ */
 export const JAIPUR_BOUNDS: Bounds = {
-  minLat: 26.8,
+  minLat: 26.76,
   maxLat: 27.0,
   minLng: 75.7,
   maxLng: 75.9,

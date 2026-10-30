@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { haversineMeters, isWithin, JAIPUR_BOUNDS, JAIPUR_CENTER, moveTowards } from './geo.js';
+import { HOSPITALS } from './hospitals.js';
 
 describe('haversineMeters', () => {
   it('is zero for the same point', () => {
@@ -36,5 +37,9 @@ describe('isWithin', () => {
   it('accepts the city centre and rejects Delhi', () => {
     expect(isWithin(JAIPUR_BOUNDS, JAIPUR_CENTER)).toBe(true);
     expect(isWithin(JAIPUR_BOUNDS, { lat: 28.61, lng: 77.21 })).toBe(false);
+  });
+
+  it('contains every receiving hospital', () => {
+    for (const h of HOSPITALS) expect(isWithin(JAIPUR_BOUNDS, h.location), h.name).toBe(true);
   });
 });

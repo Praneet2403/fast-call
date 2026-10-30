@@ -14,7 +14,10 @@
     "typecheck": "pnpm -r --if-present run typecheck",
     "test": "vitest run",
     "test:watch": "vitest",
-    "dev:sim": "pnpm --filter @fast-call/simulator dev"
+    "dev": "pnpm -r --parallel --filter \"./apps/*\" run dev",
+    "dev:api": "pnpm --filter @fast-call/api dev",
+    "dev:sim": "pnpm --filter @fast-call/simulator dev",
+    "dev:dashboard": "pnpm --filter @fast-call/dashboard dev"
   },
   "devDependencies": {
     "@types/node": "^26.6.6",

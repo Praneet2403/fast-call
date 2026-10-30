@@ -31,6 +31,8 @@ export interface SimConfig {
   logEverySec: number;
   /** Stop after this many seconds. 0 = run forever. */
   durationSec: number;
+  /** Ingest WebSocket URL, or "off" to run without sending pings anywhere. */
+  ingestUrl: string;
 }
 
 export function loadConfig(): SimConfig {
@@ -43,6 +45,7 @@ export function loadConfig(): SimConfig {
     alsShare: floatEnv('ALS_SHARE', 0.3, 0, 1),
     logEverySec: intEnv('LOG_EVERY_SEC', 5, 1),
     durationSec: intEnv('DURATION_SEC', 0),
+    ingestUrl: process.env.INGEST_URL ?? 'ws://127.0.0.1:4000/ws/agents',
   };
   if (config.pingJitterMs >= config.pingIntervalMs) {
     throw new Error('PING_JITTER_MS must be smaller than PING_INTERVAL_MS');

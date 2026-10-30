@@ -73,6 +73,7 @@ describe('Fleet', () => {
     alsShare: 0.3,
     logEverySec: 5,
     durationSec: 0,
+    ingestUrl: 'off',
   };
 
   it('pings each agent roughly once per interval', () => {

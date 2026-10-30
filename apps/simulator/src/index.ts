@@ -4,22 +4,30 @@ import { loadConfig } from './config.js';
 import { Fleet } from './fleet.js';
 import type { PingSink } from './fleet.js';
 import { createRng } from './rng.js';
+import { WebSocketSink } from './ws-sink.js';
 
 const config = loadConfig();
 const rng = createRng(config.seed);
 const fleet = new Fleet(config, rng, JAIPUR_BOUNDS);
 
-/** Day 1 sink: just counts pings. Day 2 swaps this for a WebSocket sink to the ingest service. */
+/** Offline sink (INGEST_URL=off): just counts pings. */
 class CountingSink implements PingSink {
-  count = 0;
-  last: LocationPing | undefined;
-  send(ping: LocationPing): void {
-    this.count++;
-    this.last = ping;
+  sent = 0;
+  dropped = 0;
+  send(_ping: LocationPing): void {
+    this.sent++;
   }
 }
 
-const sink = new CountingSink();
+const sink =
+  config.ingestUrl === 'off'
+    ? new CountingSink()
+    : new WebSocketSink(
+        config.ingestUrl,
+        fleet.agents.map((a) => ({ agentId: a.id, capability: a.capability })),
+      );
+if (sink instanceof WebSocketSink) sink.connect();
+
 const startedAt = Date.now();
 let lastLogAt = startedAt;
 let pingsSinceLog = 0;
@@ -28,7 +36,7 @@ let maxStepSinceLog = 0;
 const alsCount = fleet.agents.filter((a) => a.capability === 'ALS').length;
 console.log(
   `[sim] seed=${config.seed} agents=${config.agentCount} (ALS ${alsCount}, BLS ${config.agentCount - alsCount}) ` +
-    `tick=${config.tickMs}ms ping=${config.pingIntervalMs}±${config.pingJitterMs}ms`,
+    `tick=${config.tickMs}ms ping=${config.pingIntervalMs}±${config.pingJitterMs}ms ingest=${config.ingestUrl}`,
 );
 
 fleet.schedulePings(startedAt);
@@ -45,7 +53,7 @@ const timer = setInterval(() => {
     const sample = fleet.agents[0]!;
     console.log(
       `[sim] t=${Math.round((now - startedAt) / 1000)}s pings/s=${(pingsSinceLog / secs).toFixed(1)} ` +
-        `maxStep=${maxStepSinceLog.toFixed(1)}m outOfBounds=${outOfBounds} ` +
+        `sent=${sink.sent} dropped=${sink.dropped} maxStep=${maxStepSinceLog.toFixed(1)}m outOfBounds=${outOfBounds} ` +
         `${sample.id}@${sample.position.lat.toFixed(5)},${sample.position.lng.toFixed(5)}`,
     );
     lastLogAt = now;
@@ -58,8 +66,12 @@ const timer = setInterval(() => {
 
 function shutdown() {
   clearInterval(timer);
-  console.log(`[sim] stopped after ${Math.round((Date.now() - startedAt) / 1000)}s, ${sink.count} pings sent`);
-  process.exit(0);
+  if (sink instanceof WebSocketSink) sink.close();
+  console.log(
+    `[sim] stopped after ${Math.round((Date.now() - startedAt) / 1000)}s, sent=${sink.sent} dropped=${sink.dropped}`,
+  );
+  // Give the socket a moment to send its close frame.
+  setTimeout(() => process.exit(0), 100);
 }
 
 process.on('SIGINT', shutdown);

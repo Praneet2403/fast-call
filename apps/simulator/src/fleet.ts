@@ -5,6 +5,8 @@ import type { Rng } from './rng.js';
 
 export interface PingSink {
   send(ping: LocationPing): void;
+  /** Called once after each tick, so sinks can batch. */
+  flush?(): void;
 }
 
 export interface TickStats {
@@ -59,6 +61,7 @@ export class Fleet {
         agent.nextPingAt = base + pingIntervalMs + this.rng.int(-pingJitterMs, pingJitterMs);
       }
     }
+    sink.flush?.();
     return { pingsSent, maxStepMeters };
   }
 }

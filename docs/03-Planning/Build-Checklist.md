@@ -62,18 +62,18 @@ updated: 2026-10-31
 - [x] 🧑 Seeded RNG (every run can be replayed exactly; needed for the Day 6 A/B test)
 - [x] 🧑 Haversine distance + unit tests
 - [x] 🧑 Random-waypoint movement inside the Jaipur box (lat 26.80–27.00, lng 75.70–75.90)
-- [ ] 🧑 Pick 6–8 real Jaipur hospitals from OpenStreetMap → `hospitals.json` (name, lat/lng, `hasALSCare`)
+- [x] 🧑 Jaipur hospitals → `packages/shared/src/hospitals.ts` (6 of 7 placed; Asian Cancer Hospital needs a location)
 - [x] 🧑 Tick loop; pings with jitter so agents don't all fire at once
   - ✅ 1,000 agents logged moving believably (no teleporting); tests pass; pushed
 
 ## Phase 1b: Ingest + live map (Day 2)
-- [ ] 🧱 `apps/api`: Fastify + `@fastify/websocket` + `ioredis`
-- [ ] 🧑 `/ws/agents`: validate pings with `zod`; drop out-of-order pings
-- [ ] 🧑 Redis writes in a **pipeline**: `GEOADD agents:geo`, `HSET agent:{id}`, `SET agent:{id}:hb EX 15`
-- [ ] 🧑 Simulator connects and streams pings
-- [ ] 🧑 `/ws/dashboard`: **one batched snapshot per second**, not every ping
-- [ ] 🧱 `apps/dashboard`: Vite + React + MapLibre + OpenFreeMap tiles
-- [ ] 🧑 Agents as a GeoJSON circle layer, coloured by status; header with counts + median freshness
+- [x] 🧱 `apps/api`: Fastify + `@fastify/websocket` + `ioredis`
+- [x] 🧑 `/ws/agents`: validate pings with `zod`; drop out-of-order pings
+- [x] 🧑 Redis writes in a **pipeline**: `GEOADD agents:geo`, `HSET agent:{id}`, `SET agent:{id}:hb EX 15`
+- [x] 🧑 Simulator connects and streams pings
+- [x] 🧑 `/ws/dashboard`: **one batched snapshot per second**, not every ping
+- [x] 🧱 `apps/dashboard`: Vite + React + MapLibre + OpenFreeMap tiles
+- [ ] 🧑 Agents as a GeoJSON circle layer, coloured by status; header with counts + median freshness (built; map rendering not yet confirmed in a real browser)
   - ✅ 1,000 dots moving live; ~1 dashboard message/s in the network tab; GIF recorded
 
 ## Phase 2a: Database + state machine + request API (Day 3)

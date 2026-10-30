@@ -1,0 +1,22 @@
+{
+  "name": "@fast-call/api",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "tsx src/index.ts",
+    "typecheck": "tsc -p ."
+  },
+  "dependencies": {
+    "@fast-call/shared": "workspace:*",
+    "@fastify/websocket": "^11.3.4",
+    "fastify": "^5.12.7",
+    "ioredis": "^6.0.0",
+    "ws": "^8.22.0",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/ws": "^8.18.2"
+  }
+}
