@@ -1,5 +1,6 @@
 import { isWithin, JAIPUR_BOUNDS } from '@fast-call/shared';
 import type { LocationPing } from '@fast-call/shared';
+import { RoadGraph } from '@fast-call/roads';
 import { loadConfig } from './config.js';
 import { Fleet } from './fleet.js';
 import type { PingSink } from './fleet.js';
@@ -8,7 +9,14 @@ import { WebSocketSink } from './ws-sink.js';
 
 const config = loadConfig();
 const rng = createRng(config.seed);
-const fleet = new Fleet(config, rng, JAIPUR_BOUNDS);
+
+const setupStarted = performance.now();
+const graph = RoadGraph.load();
+const fleet = new Fleet(config, rng, graph);
+console.log(
+  `[sim] road graph ${graph.nodeCount} nodes; ${config.agentCount} initial routes planned in ` +
+    `${Math.round(performance.now() - setupStarted)}ms`,
+);
 
 /** Offline sink (INGEST_URL=off): just counts pings. */
 class CountingSink implements PingSink {

@@ -1,0 +1,14 @@
+{
+  "name": "@fast-call/roads",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": { ".": "./src/index.ts" },
+  "scripts": {
+    "build-graph": "tsx scripts/build-graph.ts",
+    "typecheck": "tsc -p ."
+  },
+  "dependencies": {
+    "@fast-call/shared": "workspace:*"
+  }
+}

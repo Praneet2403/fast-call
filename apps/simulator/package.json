@@ -9,6 +9,7 @@
     "typecheck": "tsc -p ."
   },
   "dependencies": {
-    "@fast-call/shared": "workspace:*"
+    "@fast-call/shared": "workspace:*",
+    "@fast-call/roads": "workspace:*"
   }
 }

@@ -237,9 +237,18 @@ importers:
 
   apps/simulator:
     dependencies:
+      '@fast-call/roads':
+        specifier: workspace:*
+        version: link:../../packages/roads
       '@fast-call/shared':
         specifier: workspace:*
         version: link:../../packages/shared
+
+  packages/roads:
+    dependencies:
+      '@fast-call/shared':
+        specifier: workspace:*
+        version: link:../shared
 
   packages/shared: {}
 

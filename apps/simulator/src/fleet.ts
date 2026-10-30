@@ -1,5 +1,6 @@
-import type { Bounds, LocationPing } from '@fast-call/shared';
-import { randomPoint, SimAgent } from './agent.js';
+import type { LocationPing } from '@fast-call/shared';
+import type { RoadGraph } from '@fast-call/roads';
+import { randomNode, SimAgent } from './agent.js';
 import type { SimConfig } from './config.js';
 import type { Rng } from './rng.js';
 
@@ -20,12 +21,12 @@ export class Fleet {
   constructor(
     private readonly config: SimConfig,
     private readonly rng: Rng,
-    bounds: Bounds,
+    graph: RoadGraph,
   ) {
     this.agents = Array.from({ length: config.agentCount }, (_, i) => {
       const id = `A-${String(i + 1).padStart(4, '0')}`;
       const capability = rng.chance(config.alsShare) ? 'ALS' : 'BLS';
-      return new SimAgent(id, capability, randomPoint(rng, bounds), rng, bounds);
+      return new SimAgent(id, capability, randomNode(rng, graph), rng, graph);
     });
   }
 
