@@ -1,9 +1,10 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
-import { Map as MapLibreMap, NavigationControl, Popup } from 'maplibre-gl';
+import { Map as MapLibreMap, NavigationControl, Popup, setWorkerUrl } from 'maplibre-gl';
 import type { ExpressionSpecification, GeoJSONSource, MapLayerMouseEvent } from 'maplibre-gl';
 import type { FeatureCollection, Point } from 'geojson';
 import 'maplibre-gl/dist/maplibre-gl.css';
-import { HOSPITALS, JAIPUR_BOUNDS, JAIPUR_CENTER } from '@fast-call/shared';
+import maplibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
+import { HOSPITALS, JAIPUR_BOUNDS } from '@fast-call/shared';
 import type { FleetRow } from '@fast-call/shared';
 import { STATUS_COLORS } from './statusColors';
 
@@ -12,6 +13,11 @@ export interface FleetMapHandle {
 }
 
 const STYLE_URL = 'https://tiles.openfreemap.org/styles/positron';
+
+// MapLibre decodes tiles and GeoJSON in a Web Worker loaded from a separate file. Vite's
+// dependency pre-bundling moves maplibre-gl but not that file, so the worker 404s and the map
+// stays blank. Bundling the worker as its own entry (?worker&url) fixes dev and production.
+setWorkerUrl(maplibreWorkerUrl);
 
 const statusColor = [
   'match',
@@ -60,8 +66,11 @@ export const FleetMap = forwardRef<FleetMapHandle>(function FleetMap(_, ref) {
       m = new MapLibreMap({
         container: container.current!,
         style: STYLE_URL,
-        center: [JAIPUR_CENTER.lng, JAIPUR_CENTER.lat],
-        zoom: 11.3,
+        bounds: [
+          [JAIPUR_BOUNDS.minLng, JAIPUR_BOUNDS.minLat],
+          [JAIPUR_BOUNDS.maxLng, JAIPUR_BOUNDS.maxLat],
+        ],
+        fitBoundsOptions: { padding: 24 },
         maxBounds: [
           [JAIPUR_BOUNDS.minLng - 0.15, JAIPUR_BOUNDS.minLat - 0.15],
           [JAIPUR_BOUNDS.maxLng + 0.15, JAIPUR_BOUNDS.maxLat + 0.15],
@@ -73,6 +82,7 @@ export const FleetMap = forwardRef<FleetMapHandle>(function FleetMap(_, ref) {
       return;
     }
     map.current = m;
+    if (import.meta.env.DEV) (window as unknown as { __fastCallMap?: MapLibreMap }).__fastCallMap = m; // for e2e checks
     m.addControl(new NavigationControl({ showCompass: false }), 'top-right');
 
     m.on('load', () => {

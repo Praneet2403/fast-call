@@ -73,7 +73,7 @@ updated: 2026-10-31
 - [x] 🧑 Simulator connects and streams pings
 - [x] 🧑 `/ws/dashboard`: **one batched snapshot per second**, not every ping
 - [x] 🧱 `apps/dashboard`: Vite + React + MapLibre + OpenFreeMap tiles
-- [ ] 🧑 Agents as a GeoJSON circle layer, coloured by status; header with counts + median freshness (built; map rendering not yet confirmed in a real browser)
+- [x] 🧑 Agents as a GeoJSON circle layer, coloured by status; header with counts + median freshness
   - ✅ 1,000 dots moving live; ~1 dashboard message/s in the network tab; GIF recorded
 
 ## Phase 2a: Database + state machine + request API (Day 3)
