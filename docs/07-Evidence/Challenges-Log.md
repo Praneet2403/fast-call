@@ -126,7 +126,7 @@ Typecheck, unit tests and the build **all passed**, and the feature was still br
 ---
 
 ## 6. One emergency, many retries: no duplicate ambulances
-**Date:** 2026-10-31 · **Commit:** see `feat(requests)` (Day 3) · **Area:** request API, Postgres
+**Date:** 2026-10-31 · **Commit:** `ff4e1c3` · **Area:** request API, Postgres
 
 ### 30-second answer
 > "When a caller's app times out, it retries. If the server had already saved the call, a naive API creates a *second* emergency, and two ambulances drive to one patient while someone else waits. Every POST carries an `Idempotency-Key`. The insert uses `ON CONFLICT DO NOTHING` on a unique index, so if 25 identical requests race, Postgres lets exactly one insert. The others wait for it to commit, then read and return the original with a 200. I proved it with a test that fires 25 concurrent creates: one row, one id, 24 replays. A key reused with a *different* body gets a 422, because that's a client bug, not a retry."
