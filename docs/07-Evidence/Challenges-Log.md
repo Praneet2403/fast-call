@@ -102,12 +102,21 @@ Typecheck, unit tests and the build **all passed**, and the feature was still br
 ---
 
 ## 5. Ambulances driving through a forest
-**Date:** 2026-10-31 · **Status:** 🟡 found, fix proposed · **Area:** simulator realism
+**Date:** 2026-10-31 · **Commit:** `5770a2a` · **Area:** simulator realism / geospatial
 
-### 30-second answer (once fixed)
-> "Looking at the live map, I noticed ambulances crossing the Jhalana Reserve Forest and the Aravalli hills. The simulator moved units in straight lines between random points, so it ignored roads entirely, and every straight-line 'ETA' was fiction. That's the same mistake the project claims to fix in dispatch. I loaded Jaipur's road network from OpenStreetMap (53k road segments), built a graph, and routed units with A\*. The same graph later gives real road ETAs for dispatch scoring."
+### 30-second answer
+> "Looking at the live map, I noticed ambulances crossing the Jhalana Reserve Forest and the Aravalli hills. The simulator moved units in straight lines between random points, so it ignored roads entirely, and every straight-line 'ETA' was fiction. That's the same mistake the project claims to fix in dispatch. I pulled Jaipur's drivable roads from OpenStreetMap, built a graph of 216k nodes and 248k road segments, and routed every ambulance with A\*. On average, the road distance in Jaipur is 1.24× the straight line, which is exactly the error 'nearest by straight line' makes."
 
 ### Details
 - **Found by:** looking at the map, not by a test. Unit tests checked speed and bounds, not road realism.
+- **Data:** Overpass API → clip to the service area → keep the **largest connected component** (99.3% of nodes; the other 109 fragments are private compounds and broken data), so a route always exists. Stored as a 1.68 MB gzipped file in the repo, so seeded runs stay reproducible even when OSM changes.
+- **Graph:** CSR adjacency in typed arrays (compact and cache-friendly) plus a grid index for "nearest road to this point".
+- **Routing:** A\* with a straight-line heuristic. It's admissible because a road is never shorter than a straight line, so A\* gives the same answer as Dijkstra. Measured: **~5× fewer nodes explored than Dijkstra; p50 8.9 ms, p95 34 ms** per city-wide route; 1,000 initial routes in 1.6 s.
+- **A second bug the tests caught:** destinations were picked by sampling random nodes until one was 0.8–6 km away. From the city edge most nodes are too far, so all attempts failed and a 9 km trip slipped through. Fix: sample a bearing and distance, then snap to the nearest road. The test now includes the four corner nodes.
+- **Verified visually:** units now stay on roads. The one unit left inside Jhalana was on a real `tertiary` road in OSM (way 1180267892) that the base map doesn't draw at that zoom.
 - **Lesson:** a believable simulation needs the same constraints as the real world, or the "smart dispatch beats nearest" result is meaningless.
-- **Fix:** _pending; record the commit here when done._
+
+### Likely follow-up questions
+- *Why A\* and not Dijkstra?* Same optimal answer, but the heuristic points the search towards the goal, so it explores far fewer nodes.
+- *Why not call Google Maps or OSRM?* Rate limits, cost, network latency on every decision, and non-reproducible results. A local graph is deterministic and fast enough.
+- *What's simplified?* Roads are undirected (one-way streets are ignored; ambulances with sirens often bend that rule anyway), and speed is constant per trip, not per road type. Both are listed as known limits.

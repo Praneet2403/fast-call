@@ -64,6 +64,7 @@ updated: 2026-10-31
 - [x] 🧑 Random-waypoint movement inside the Jaipur box (lat 26.80–27.00, lng 75.70–75.90)
 - [x] 🧑 Jaipur hospitals → `packages/shared/src/hospitals.ts` (6 of 7 placed; Asian Cancer Hospital needs a location)
 - [x] 🧑 Tick loop; pings with jitter so agents don't all fire at once
+- [x] 🧑 **Real road network:** OSM road graph (216k nodes) + A* routing; units drive on roads, not through the Jhalana forest
   - ✅ 1,000 agents logged moving believably (no teleporting); tests pass; pushed
 
 ## Phase 1b: Ingest + live map (Day 2)
@@ -108,7 +109,7 @@ updated: 2026-10-31
   - ✅ Kill 10% of agents under load → every affected request is reassigned or expired, none stuck; recorded
 
 ## Phase 4: Smart ranking + demand forecast (Day 6)
-- [ ] 🧑 ETA v0: haversine × road factor ÷ zone speed
+- [ ] 🧑 ETA v0: **A\* road distance** (graph already built) ÷ speed. Measured road/straight-line factor in Jaipur = 1.24
 - [ ] 🧑 `score()` as a **pure function** → `{ total, breakdown }`: ETA, freshness, coverage (zone impact), demand pressure, capability waste (avoid sending ALS to a BLS call); unit tests
 - [ ] 🧑 Demand forecast per H3 cell per 15 min (seasonal baseline + exponential smoothing); compare its MAE with a naive "last value" forecast
 - [ ] 🧑 Zone impact uses the forecast: avoid draining a cell that's about to spike
