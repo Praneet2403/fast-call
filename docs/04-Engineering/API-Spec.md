@@ -17,7 +17,7 @@ status: draft
 
 ## WebSocket: agent → server
 ```json
-{ "type": "ping", "agentId": "A-17", "lat": 23.25, "lng": 77.41, "ts": 1730000000000 }
+{ "type": "ping", "agentId": "A-17", "lat": 26.9124, "lng": 75.7873, "ts": 1730000000000 }
 ```
 
 ## WebSocket: server → dashboard

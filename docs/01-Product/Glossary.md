@@ -16,7 +16,7 @@ Use these words consistently in code, docs and interviews.
 | **Freshness** | Age of the latest location (now − lastSeenAt). |
 | **ETA** | Estimated time for the agent to reach the request location. |
 | **Zone / Cell** | A geographic area used for capacity and demand. We plan to use H3 hex cells. |
-| **Capability** | What an agent can do (e.g. `ICU`, `BASIC`, `HEAVY_VEHICLE`). |
+| **Capability** | What an agent can do (`BLS` = Basic Life Support, `ALS` = Advanced Life Support: paramedic, cardiac monitor, drugs). |
 | **SLA** | Target time limit, e.g. "unit on scene within 10 min for P1". |
 | **Idempotency key** | Client-supplied ID so a retried request isn't processed twice. |
 | ✍️ | Add terms as you meet them. |

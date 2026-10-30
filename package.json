@@ -1,0 +1,17 @@
+{
+  "name": "fast-call",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@12.16.1",
+  "devEngines": {
+    "packageManager": { "name": "pnpm", "version": "12.16.1", "onFail": "download" }
+  },
+  "scripts": {
+    "typecheck": "pnpm -r --if-present run typecheck"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2"
+  }
+}

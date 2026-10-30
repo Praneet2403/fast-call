@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.env
+.env.*
+*.log
+.DS_Store
+docs/.obsidian/plugins/
+docs/.obsidian/workspace*.json
