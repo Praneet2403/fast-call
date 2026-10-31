@@ -121,6 +121,7 @@ updated: 2026-10-31
 ## Phase 5: Proof & ship (Day 7)
 - [ ] 🧑 Scale 2k → 5k → 10k agents: find the first bottleneck, fix one thing, record before/after
 - [ ] 🧑 Dispatch latency p50/p95/p99 (job start → offer sent) under a request burst
+  - ⚠️ Day 4 live run: p50 13 ms but **p99 1.26 s** once ~350 offers were in flight. Suspect: Postgres pool (10) is smaller than worker concurrency (32), so jobs queue for a connection. Measure, then fix.
 - [ ] 🧑 Final A/B run during a demand spike → results table
 - [ ] 🧱 GitHub Actions: typecheck + unit tests
 - [ ] 🧑 README: pitch, architecture diagram, one-command run, **real numbers**, tradeoffs, known limits

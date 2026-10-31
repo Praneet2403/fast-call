@@ -158,7 +158,7 @@ Typecheck, unit tests and the build **all passed**, and the feature was still br
 ---
 
 ## 8. One ambulance offered to 261 emergencies at once
-**Date:** 2026-10-31 · **Commit:** Day 4 dispatcher · **Area:** dispatcher, Redis
+**Date:** 2026-10-31 · **Commit:** `74d1d87` · **Area:** dispatcher, Redis
 
 ### 30-second answer
 > "The dispatcher runs 32 jobs in parallel. Claiming a unit looks simple: 'if it's AVAILABLE, mark it DISPATCHED'. But as two separate commands, many workers read AVAILABLE before any of them writes. I wrote a test that fires 500 calls at 50 ambulances at once and ran it with the naive claim: **one ambulance was offered to 261 calls simultaneously**, and 4–6 units were double-booked on every run. The fix is one Lua script that Redis runs atomically: check the heartbeat, check AVAILABLE, `SET lock NX` with a TTL, mark DISPATCHED. Same test: every unit offered exactly once, zero double bookings. Postgres also has a partial unique index as a last line of defence, so even a buggy lock can't put one unit on two live calls."
