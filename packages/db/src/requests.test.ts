@@ -4,8 +4,11 @@ import { RequestRepo } from './requests.js';
 import type { NewRequest } from './requests.js';
 import { createTestSql } from './testing.js';
 
-const sql = await createTestSql();
+const sql = await createTestSql('db');
 const repo = sql ? new RequestRepo(sql) : (null as unknown as RequestRepo);
+afterAll(async () => {
+  await sql?.end();
+});
 
 let n = 0;
 const call = (overrides: Partial<NewRequest> = {}): NewRequest => ({
@@ -19,9 +22,6 @@ const call = (overrides: Partial<NewRequest> = {}): NewRequest => ({
 describe.skipIf(!sql)('RequestRepo (Postgres)', () => {
   beforeEach(async () => {
     await sql!`TRUNCATE requests, request_events, offers`;
-  });
-  afterAll(async () => {
-    await sql?.end();
   });
 
   describe('create', () => {
@@ -120,5 +120,80 @@ describe.skipIf(!sql)('RequestRepo (Postgres)', () => {
       expect((await repo.get(b.id))!.state).toBe('OFFERED');
       expect((await repo.events(b.id)).some((e) => e.toState === 'ASSIGNED')).toBe(false);
     });
+  });
+});
+
+describe.skipIf(!sql)('offers (Postgres)', () => {
+  beforeEach(async () => {
+    await sql!`TRUNCATE requests, request_events, offers`;
+  });
+
+  const matchingCall = async () => {
+    const { request } = await repo.create(call());
+    await repo.transition(request.id, 'MATCHING', { reason: 'r' });
+    return request;
+  };
+
+  it('creates an offer and moves the call to OFFERED in one step', async () => {
+    const request = await matchingCall();
+    const res = await repo.createOffer(request.id, 'A-0001', 15_000, { reason: 'nearest unit', score: 1.2 });
+    expect(res.created).toBe(true);
+    expect((await repo.get(request.id))!.state).toBe('OFFERED');
+    expect((await repo.pendingOffer(request.id))!.agentId).toBe('A-0001');
+    expect(await repo.offeredAgents(request.id)).toEqual(['A-0001']);
+  });
+
+  it('refuses to offer a call that is no longer MATCHING', async () => {
+    const request = await matchingCall();
+    await repo.transition(request.id, 'CANCELLED', { reason: 'caller hung up' });
+    expect(await repo.createOffer(request.id, 'A-0001', 15_000, { reason: 'r' })).toEqual({ created: false, current: 'CANCELLED' });
+  });
+
+  it('assigns the unit on ACK, and returns the call to MATCHING on UNABLE', async () => {
+    const a = await matchingCall();
+    const offerA = await repo.createOffer(a.id, 'A-0001', 15_000, { reason: 'r' });
+    const ack = await repo.resolveOffer(offerA.created ? offerA.offer.id : '', 'ACKNOWLEDGED');
+    expect(ack).toMatchObject({ resolved: true, outcome: 'ACKNOWLEDGED', callState: 'ASSIGNED' });
+    expect((await repo.get(a.id))!.assignedAgentId).toBe('A-0001');
+
+    const b = await matchingCall();
+    const offerB = await repo.createOffer(b.id, 'A-0002', 15_000, { reason: 'r' });
+    const unable = await repo.resolveOffer(offerB.created ? offerB.offer.id : '', 'UNABLE');
+    expect(unable).toMatchObject({ resolved: true, callState: 'MATCHING' });
+    expect((await repo.get(b.id))!.state).toBe('MATCHING');
+  });
+
+  it('settles an offer exactly once when the ACK and the timeout race', async () => {
+    for (let round = 0; round < 10; round++) {
+      const request = await matchingCall();
+      const res = await repo.createOffer(request.id, `A-${1000 + round}`, 15_000, { reason: 'r' });
+      if (!res.created) throw new Error('offer not created');
+      const [x, y] = await Promise.all([
+        repo.resolveOffer(res.offer.id, 'ACKNOWLEDGED'),
+        repo.resolveOffer(res.offer.id, 'TIMED_OUT'),
+      ]);
+      expect([x, y].filter((r) => r.resolved)).toHaveLength(1);
+      const state = (await repo.get(request.id))!.state;
+      expect(['ASSIGNED', 'MATCHING']).toContain(state);
+      // Exactly one transition out of OFFERED in the audit trail.
+      expect((await repo.events(request.id)).filter((e) => e.fromState === 'OFFERED')).toHaveLength(1);
+    }
+  });
+
+  it('marks the offer CANCELLED if the call was cancelled while waiting for the crew', async () => {
+    const request = await matchingCall();
+    const res = await repo.createOffer(request.id, 'A-0001', 15_000, { reason: 'r' });
+    await repo.transition(request.id, 'CANCELLED', { reason: 'caller hung up' });
+    const late = await repo.resolveOffer(res.created ? res.offer.id : '', 'ACKNOWLEDGED');
+    expect(late).toMatchObject({ resolved: true, outcome: 'CANCELLED', callState: 'CANCELLED' });
+  });
+
+  it('lists live calls with their unit for the dashboard', async () => {
+    const request = await matchingCall();
+    await repo.createOffer(request.id, 'A-0009', 15_000, { reason: 'r' });
+    const rows = await repo.liveCalls();
+    expect(rows).toHaveLength(1);
+    expect(rows[0]![3]).toBe('OFFERED');
+    expect(rows[0]![5]).toBe('A-0009');
   });
 });

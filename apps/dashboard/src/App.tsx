@@ -1,5 +1,5 @@
 import { useCallback, useRef } from 'react';
-import type { DisplayStatus, FleetSnapshotMessage } from '@fast-call/shared';
+import type { DisplayStatus, FleetSnapshotMessage, RequestState } from '@fast-call/shared';
 import { FleetMap } from './FleetMap';
 import type { FleetMapHandle } from './FleetMap';
 import { STATUS_COLORS, STATUS_LABELS } from './statusColors';
@@ -11,9 +11,11 @@ const seconds = (ms: number) => `${(ms / 1000).toFixed(1)} s`;
 
 export function App() {
   const mapRef = useRef<FleetMapHandle>(null);
-  const onSnapshot = useCallback((s: FleetSnapshotMessage) => mapRef.current?.setFleet(s.agents), []);
+  const onSnapshot = useCallback((s: FleetSnapshotMessage) => mapRef.current?.setSnapshot(s), []);
   const { connection, snapshot, bytes } = useFleetSocket(onSnapshot);
   const stats = snapshot?.stats;
+  const calls = snapshot?.callStats;
+  const live = (...states: RequestState[]) => (calls ? states.reduce((n, st) => n + (calls.live[st] ?? 0), 0) : '—');
 
   return (
     <div className="app">
@@ -36,6 +38,22 @@ export function App() {
         </section>
 
         <section>
+          <h2>Calls</h2>
+          <div className="cards">
+            <Stat label="Waiting for a unit" value={live('CREATED', 'MATCHING')} tone={calls && live('CREATED', 'MATCHING') ? 'warn' : undefined} />
+            <Stat label="Offered" value={live('OFFERED')} />
+            <Stat label="Unit on the way" value={live('ASSIGNED', 'EN_ROUTE')} />
+            <Stat label="On scene" value={live('ARRIVED')} />
+            <Stat label="Completed (1 h)" value={calls?.completedLastHour ?? '—'} tone="good" />
+            <Stat
+              label="Expired / cancelled (1 h)"
+              value={calls ? `${calls.expiredLastHour} / ${calls.cancelledLastHour}` : '—'}
+              tone={calls?.expiredLastHour ? 'warn' : undefined}
+            />
+          </div>
+        </section>
+
+        <section>
           <h2>Unit status</h2>
           <ul className="legend">
             {LEGEND.map((s) => (
@@ -49,6 +67,15 @@ export function App() {
             </li>
             <li>
               <span className="dot dot-hospital" /> Hospital
+            </li>
+            <li>
+              <span className="dot dot-call" /> Call (bigger = more urgent)
+            </li>
+            <li>
+              <span className="link link-offered" /> Offered to unit
+            </li>
+            <li>
+              <span className="link link-assigned" /> Unit assigned
             </li>
           </ul>
         </section>

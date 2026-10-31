@@ -16,7 +16,15 @@ const ping = z.object({
 
 const register = z.object({
   type: z.literal('register'),
-  agents: z.array(z.object({ agentId, capability: z.enum(['BLS', 'ALS']) })).max(50_000),
+  agents: z
+    .array(
+      z.object({
+        agentId,
+        capability: z.enum(['BLS', 'ALS']),
+        status: z.enum(['OFFLINE', 'AVAILABLE', 'DISPATCHED', 'EN_ROUTE', 'AT_SCENE', 'TRANSPORTING', 'AT_HOSPITAL']).optional(),
+      }),
+    )
+    .max(50_000),
 });
 
 /** Batch-level shape only; each ping is validated on its own so one bad ping doesn't sink the batch. */
@@ -25,7 +33,22 @@ const pingBatch = z.object({
   pings: z.array(z.unknown()).max(50_000),
 });
 
-const message = z.discriminatedUnion('type', [register, pingBatch]);
+const offerResponse = z.object({
+  type: z.literal('offer.response'),
+  offerId: z.uuid(),
+  agentId,
+  response: z.enum(['ACK', 'UNABLE']),
+});
+
+const crewStatus = z.object({
+  type: z.literal('status'),
+  agentId,
+  status: z.enum(['EN_ROUTE', 'AT_SCENE', 'TRANSPORTING', 'AT_HOSPITAL', 'AVAILABLE']),
+  requestId: z.uuid(),
+  ts: z.number().int().positive(),
+});
+
+const message = z.discriminatedUnion('type', [register, pingBatch, offerResponse, crewStatus]);
 
 export type ParseResult =
   | { ok: true; message: AgentChannelMessage; rejectedPings: number }
@@ -42,7 +65,7 @@ export function parseAgentMessage(raw: string): ParseResult {
   const parsed = message.safeParse(json);
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? 'invalid message' };
 
-  if (parsed.data.type === 'register') return { ok: true, message: parsed.data, rejectedPings: 0 };
+  if (parsed.data.type !== 'pings') return { ok: true, message: parsed.data, rejectedPings: 0 };
 
   const pings = [];
   let rejectedPings = 0;

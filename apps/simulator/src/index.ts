@@ -32,11 +32,13 @@ class CountingSink implements PingSink {
 const sink =
   config.ingestUrl === 'off'
     ? new CountingSink()
-    : new WebSocketSink(
-        config.ingestUrl,
-        fleet.agents.map((a) => ({ agentId: a.id, capability: a.capability })),
+    : new WebSocketSink(config.ingestUrl, () =>
+        fleet.agents.map((a) => ({ agentId: a.id, capability: a.capability, status: a.status })),
       );
-if (sink instanceof WebSocketSink) sink.connect();
+if (sink instanceof WebSocketSink) {
+  sink.onCommand = (cmd) => fleet.handleCommand(cmd, Date.now());
+  sink.connect();
+}
 
 const startedAt = Date.now();
 // Separate random stream for calls, so enabling calls never changes how the fleet moves.

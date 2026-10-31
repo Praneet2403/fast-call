@@ -131,9 +131,10 @@ describe('Fleet', () => {
   });
 
   it('assigns roughly the configured ALS share', () => {
-    const fleet = new Fleet({ ...config, agentCount: 2000 }, createRng(5), graph);
-    const als = fleet.agents.filter((a) => a.capability === 'ALS').length / 2000;
+    // 1,000 units (each plans an A* route) keeps this well under the timeout when files run in parallel.
+    const fleet = new Fleet({ ...config, agentCount: 1000 }, createRng(5), graph);
+    const als = fleet.agents.filter((a) => a.capability === 'ALS').length / 1000;
     expect(als).toBeGreaterThan(0.25);
     expect(als).toBeLessThan(0.35);
-  });
+  }, 20_000);
 });

@@ -1,6 +1,15 @@
 import { assertTransition } from '@fast-call/shared';
-import type { Capability, DispatchRequest, GeoPoint, Priority, RequestState, Timestamp } from '@fast-call/shared';
-import type { Sql } from './client.js';
+import type {
+  CallRow,
+  Capability,
+  DispatchRequest,
+  GeoPoint,
+  OfferOutcome,
+  Priority,
+  RequestState,
+  Timestamp,
+} from '@fast-call/shared';
+import type { Sql, Tx } from './client.js';
 
 export interface RequestRecord extends DispatchRequest {
   idempotencyKey: string;
@@ -141,25 +150,168 @@ export class RequestRepo {
    */
   async transition(id: string, to: RequestState, opts: TransitionOptions): Promise<TransitionResult> {
     return this.sql.begin(async (tx) => {
-      const [row] = await tx<{ state: RequestState }[]>`SELECT state FROM requests WHERE id = ${id} FOR UPDATE`;
-      if (!row) throw new RequestNotFoundError(id);
-      const from = row.state;
+      const from = await lockState(tx, id);
       if (opts.onlyFrom && !opts.onlyFrom.includes(from)) return { applied: false, current: from };
-      assertTransition(from, to);
-
-      if (to === 'ASSIGNED' && !opts.agentId) throw new Error('ASSIGNED requires an agentId');
-      // Keep the unit on the record for history; drop it only when the call goes back to matching.
-      const agent = to === 'ASSIGNED' ? opts.agentId! : to === 'MATCHING' ? null : undefined;
-
-      if (agent === undefined) {
-        await tx`UPDATE requests SET state = ${to}, updated_at = now() WHERE id = ${id}`;
-      } else {
-        await tx`UPDATE requests SET state = ${to}, assigned_agent_id = ${agent}, updated_at = now() WHERE id = ${id}`;
-      }
-      await tx`
-        INSERT INTO request_events (request_id, from_state, to_state, reason, agent_id)
-        VALUES (${id}, ${from}, ${to}, ${opts.reason}, ${opts.agentId ?? null})`;
+      await applyTransition(tx, id, from, to, opts);
       return { applied: true, from, to };
     });
   }
+
+  // ---- offers ----
+
+  /**
+   * Offer a MATCHING call to a unit: insert the offer and move the call to OFFERED atomically.
+   * Returns `created: false` if the call left MATCHING meanwhile (e.g. it was cancelled).
+   */
+  async createOffer(
+    requestId: string,
+    agentId: string,
+    ttlMs: number,
+    meta: { reason: string; score?: number; breakdown?: Record<string, number> },
+  ): Promise<{ created: true; offer: OfferRecord } | { created: false; current: RequestState }> {
+    return this.sql.begin(async (tx) => {
+      const from = await lockState(tx, requestId);
+      if (from !== 'MATCHING') return { created: false, current: from };
+      const [row] = await tx<OfferRow[]>`
+        INSERT INTO offers (request_id, agent_id, expires_at, score, score_breakdown)
+        VALUES (${requestId}, ${agentId}, now() + ${ttlMs} * interval '1 millisecond',
+                ${meta.score ?? null}, ${meta.breakdown ? tx.json(meta.breakdown) : null})
+        RETURNING id, request_id, agent_id, sent_at, expires_at, outcome`;
+      await applyTransition(tx, requestId, from, 'OFFERED', { reason: meta.reason, agentId });
+      return { created: true, offer: toOffer(row!) };
+    });
+  }
+
+  /**
+   * Settle an offer exactly once. The crew's answer and the timeout race each other; whichever
+   * locks the offer row first wins, and the other finds it no longer PENDING and does nothing.
+   *  ACKNOWLEDGED → call ASSIGNED to the unit · UNABLE / TIMED_OUT → call back to MATCHING.
+   *  If the call was cancelled meanwhile, the offer is marked CANCELLED instead.
+   */
+  async resolveOffer(offerId: string, outcome: 'ACKNOWLEDGED' | 'UNABLE' | 'TIMED_OUT'): Promise<ResolveResult> {
+    return this.sql.begin(async (tx) => {
+      const [row] = await tx<OfferRow[]>`
+        SELECT id, request_id, agent_id, sent_at, expires_at, outcome FROM offers WHERE id = ${offerId} FOR UPDATE`;
+      if (!row) return { resolved: false, reason: 'not-found' };
+      const offer = toOffer(row);
+      if (offer.outcome !== 'PENDING') return { resolved: false, reason: 'already-resolved', offer };
+
+      const callState = await lockState(tx, offer.requestId);
+      if (callState !== 'OFFERED') {
+        await tx`UPDATE offers SET outcome = 'CANCELLED' WHERE id = ${offerId}`;
+        return { resolved: true, outcome: 'CANCELLED', offer, callState };
+      }
+
+      await tx`UPDATE offers SET outcome = ${outcome} WHERE id = ${offerId}`;
+      if (outcome === 'ACKNOWLEDGED') {
+        await applyTransition(tx, offer.requestId, 'OFFERED', 'ASSIGNED', { reason: 'crew acknowledged', agentId: offer.agentId });
+        return { resolved: true, outcome, offer, callState: 'ASSIGNED' };
+      }
+      const reason = outcome === 'UNABLE' ? 'crew unable to respond' : 'crew did not acknowledge in time';
+      await applyTransition(tx, offer.requestId, 'OFFERED', 'MATCHING', { reason, agentId: offer.agentId });
+      return { resolved: true, outcome, offer, callState: 'MATCHING' };
+    });
+  }
+
+  /** Units already offered this call: never offer the same call to them twice. */
+  async offeredAgents(requestId: string): Promise<string[]> {
+    const rows = await this.sql<{ agentId: string }[]>`SELECT agent_id FROM offers WHERE request_id = ${requestId}`;
+    return rows.map((r) => r.agentId);
+  }
+
+  async getOffer(offerId: string): Promise<OfferRecord | null> {
+    const [row] = await this.sql<OfferRow[]>`
+      SELECT id, request_id, agent_id, sent_at, expires_at, outcome FROM offers WHERE id = ${offerId}`;
+    return row ? toOffer(row) : null;
+  }
+
+  async pendingOffer(requestId: string): Promise<OfferRecord | null> {
+    const [row] = await this.sql<OfferRow[]>`
+      SELECT id, request_id, agent_id, sent_at, expires_at, outcome FROM offers
+      WHERE request_id = ${requestId} AND outcome = 'PENDING'`;
+    return row ? toOffer(row) : null;
+  }
+
+  // ---- dashboard read model ----
+
+  /** Live calls with the unit assigned to them, or currently being offered them. */
+  async liveCalls(): Promise<CallRow[]> {
+    const rows = await this.sql<
+      { id: string; lat: number; lng: number; state: RequestState; priority: Priority; agentId: string | null; createdAt: Date }[]
+    >`
+      SELECT r.id, r.lat, r.lng, r.state, r.priority, COALESCE(r.assigned_agent_id, o.agent_id) AS agent_id, r.created_at
+      FROM request_view r
+      LEFT JOIN offers o ON o.request_id = r.id AND o.outcome = 'PENDING'
+      WHERE r.state NOT IN ('COMPLETED', 'CANCELLED', 'EXPIRED')
+      ORDER BY r.created_at`;
+    return rows.map((r) => [r.id, r.lng, r.lat, r.state, r.priority, r.agentId, r.createdAt.getTime()]);
+  }
+
+  async finishedLastHour(): Promise<Partial<Record<RequestState, number>>> {
+    const rows = await this.sql<{ state: RequestState; n: number }[]>`
+      SELECT state, count(*)::int AS n FROM requests
+      WHERE state IN ('COMPLETED', 'CANCELLED', 'EXPIRED') AND updated_at > now() - interval '1 hour'
+      GROUP BY state`;
+    return Object.fromEntries(rows.map((r) => [r.state, r.n]));
+  }
 }
+
+async function lockState(tx: Tx, id: string): Promise<RequestState> {
+  const [row] = await tx<{ state: RequestState }[]>`SELECT state FROM requests WHERE id = ${id} FOR UPDATE`;
+  if (!row) throw new RequestNotFoundError(id);
+  return row.state;
+}
+
+/** Validates against the lifecycle table, updates the row and appends the audit event. Caller holds the row lock. */
+async function applyTransition(tx: Tx, id: string, from: RequestState, to: RequestState, opts: TransitionOptions) {
+  assertTransition(from, to);
+  if (to === 'ASSIGNED' && !opts.agentId) throw new Error('ASSIGNED requires an agentId');
+  // Keep the unit on the record for history; drop it only when the call goes back to matching.
+  const agent = to === 'ASSIGNED' ? opts.agentId! : to === 'MATCHING' ? null : undefined;
+
+  if (agent === undefined) {
+    await tx`UPDATE requests SET state = ${to}, updated_at = now() WHERE id = ${id}`;
+  } else {
+    await tx`UPDATE requests SET state = ${to}, assigned_agent_id = ${agent}, updated_at = now() WHERE id = ${id}`;
+  }
+  await tx`
+    INSERT INTO request_events (request_id, from_state, to_state, reason, agent_id)
+    VALUES (${id}, ${from}, ${to}, ${opts.reason}, ${opts.agentId ?? null})`;
+}
+
+export interface OfferRecord {
+  id: string;
+  requestId: string;
+  agentId: string;
+  sentAt: Timestamp;
+  expiresAt: Timestamp;
+  outcome: OfferOutcome;
+}
+
+interface OfferRow {
+  id: string;
+  requestId: string;
+  agentId: string;
+  sentAt: Date;
+  expiresAt: Date;
+  outcome: OfferOutcome;
+}
+
+const toOffer = (r: OfferRow): OfferRecord => ({
+  id: r.id,
+  requestId: r.requestId,
+  agentId: r.agentId,
+  sentAt: r.sentAt.getTime(),
+  expiresAt: r.expiresAt.getTime(),
+  outcome: r.outcome,
+});
+
+export type ResolveResult =
+  | { resolved: false; reason: 'not-found' }
+  | { resolved: false; reason: 'already-resolved'; offer: OfferRecord }
+  | {
+      resolved: true;
+      outcome: 'ACKNOWLEDGED' | 'UNABLE' | 'TIMED_OUT' | 'CANCELLED';
+      offer: OfferRecord;
+      callState: RequestState;
+    };

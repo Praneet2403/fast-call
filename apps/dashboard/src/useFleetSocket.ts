@@ -11,7 +11,7 @@ export type ConnectionState = 'connecting' | 'open' | 'closed';
  */
 export function useFleetSocket(onSnapshot: (s: FleetSnapshotMessage) => void) {
   const [connection, setConnection] = useState<ConnectionState>('connecting');
-  const [snapshot, setSnapshot] = useState<Pick<FleetSnapshotMessage, 'stats' | 'ts'> | null>(null);
+  const [snapshot, setSnapshot] = useState<Pick<FleetSnapshotMessage, 'stats' | 'ts' | 'callStats'> | null>(null);
   const [bytes, setBytes] = useState(0);
   const handler = useRef(onSnapshot);
   handler.current = onSnapshot;
@@ -34,7 +34,7 @@ export function useFleetSocket(onSnapshot: (s: FleetSnapshotMessage) => void) {
         const msg = JSON.parse(e.data as string) as DashboardMessage;
         if (msg.type !== 'fleet.snapshot') return;
         handler.current(msg);
-        setSnapshot({ stats: msg.stats, ts: msg.ts });
+        setSnapshot({ stats: msg.stats, ts: msg.ts, callStats: msg.callStats });
         setBytes((e.data as string).length);
       };
       ws.onclose = () => {

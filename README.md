@@ -11,7 +11,7 @@ Requires Node 24, pnpm and Docker.
 ```bash
 docker compose up -d   # Postgres + PostGIS, Redis
 pnpm install
-pnpm dev               # API :4000, simulator, dashboard :5173
+pnpm dev               # API :4000, dispatcher, simulator, dashboard :5173
 ```
 
 Open http://localhost:5173 to see the live fleet.
@@ -26,9 +26,11 @@ pnpm typecheck
 | Path | What it is |
 |---|---|
 | `apps/simulator` | 1,000+ simulated ambulances driving Jaipur's real road network (seeded, replayable) |
-| `apps/api` | WebSocket ingest of GPS pings into Redis; 1/s fleet snapshots for dashboards |
+| `apps/api` | Emergency-call API (idempotent), crew WebSocket gateway, GPS ingest into Redis, 1/s dashboard snapshots |
+| `apps/dispatcher` | BullMQ worker: finds the nearest free capable unit, claims it atomically, offers, handles ACK / timeout / re-offer |
 | `apps/dashboard` | React + MapLibre ops dashboard |
-| `packages/shared` | Domain types, wire protocol, geo helpers, hospitals |
+| `packages/shared` | Domain types, request lifecycle, wire protocol, geo helpers, hospitals |
+| `packages/db` | Postgres + PostGIS schema, request/offer repository with transactional state changes |
 | `packages/roads` | Jaipur road graph (OpenStreetMap) + A* routing |
 
 ## Data attribution

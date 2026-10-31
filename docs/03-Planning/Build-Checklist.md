@@ -87,14 +87,14 @@ updated: 2026-10-31
   - ✅ Same POST twice → one row; illegal transition tests pass; jobs appear in the queue
 
 ## Phase 2b: Dispatcher (Day 4)
-- [ ] 🧱 `apps/dispatcher`: BullMQ worker scaffold
-- [ ] 🧑 Candidates: `GEOSEARCH … ASC COUNT k`, radius 3 → 5 → 8 km; filter AVAILABLE + capability
-- [ ] 🧑 Lock: `SET agent:{id}:lock <requestId> NX PX 20000` + Lua compare-and-delete release
-- [ ] 🧑 Offer → delayed timeout job → on decline/timeout: release the lock, exclude the agent, retry → EXPIRED after N attempts
-- [ ] 🧑 Simulator crews **acknowledge** offers (ack delay; rare "unable" reply), drive to the scene, then transport to a hospital before becoming AVAILABLE
-- [ ] 🧑 **Concurrency test:** 500 simultaneous requests vs 50 agents → no agent held by two requests
-- [ ] 🧑 Remove the lock once, watch the test fail, write down why (your best interview story)
-- [ ] 🧑 Dashboard: request markers by state + line from agent to request
+- [x] 🧱 `apps/dispatcher`: BullMQ worker scaffold
+- [x] 🧑 Candidates: `GEOSEARCH … ASC COUNT k`, radius 3 → 5 → 8 km; filter AVAILABLE + capability (pages wider when the nearest K are all busy)
+- [x] 🧑 Lock: one Lua script checks heartbeat + AVAILABLE, `SET lock NX PX`, marks DISPATCHED; compare-and-delete release
+- [x] 🧑 Offer → delayed timeout job → on decline/timeout: release the lock, exclude the agent, retry → EXPIRED after N attempts
+- [x] 🧑 Simulator crews **acknowledge** offers (ack delay; rare "unable" reply), drive to the scene, then transport to a hospital before becoming AVAILABLE
+- [x] 🧑 **Concurrency test:** 500 simultaneous requests vs 50 agents → no agent held by two requests
+- [x] 🧑 Remove the lock once, watch the test fail, write down why (your best interview story): naive claim offered **one unit to 261 calls at once**
+- [x] 🧑 Dashboard: request markers by state + line from agent to request
   - ✅ End-to-end flow live on the map; concurrency test passes
 
 ## Phase 3: Failure handling + zones (Day 5)

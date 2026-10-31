@@ -72,6 +72,7 @@ export function registerRequestRoutes(app: FastifyInstance, deps: { requests: Re
     if (!existing) return reply.code(404).send({ error: 'request not found' });
     try {
       await requests.transition(id.data, 'CANCELLED', { reason: body.data?.reason ?? 'cancelled by caller' });
+      await queue.enqueueCallCancelled({ requestId: id.data }); // free whichever unit had the call
     } catch (err) {
       if (err instanceof IllegalTransitionError) {
         return reply.code(409).send({ error: `cannot cancel a request in state ${err.from}`, state: err.from });

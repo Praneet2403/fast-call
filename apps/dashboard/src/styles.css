@@ -155,6 +155,24 @@ h2 {
   border: 3px solid var(--bad);
 }
 
+.dot-call {
+  width: 12px;
+  height: 12px;
+  background: #fff;
+  border: 3px solid #dc2626;
+}
+
+.link {
+  width: 18px;
+  height: 0;
+  flex: none;
+  border-top: 2px solid #2563eb;
+}
+
+.link-offered {
+  border-top: 2px dashed #f59e0b;
+}
+
 footer {
   margin-top: auto;
   font-size: 12px;

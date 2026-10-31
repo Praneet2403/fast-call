@@ -1,25 +1,38 @@
-import type { AgentChannelMessage, Capability, LocationPing } from '@fast-call/shared';
+import type {
+  AgentChannelMessage,
+  AgentCommand,
+  CrewStatusMessage,
+  LocationPing,
+  OfferResponseMessage,
+  RegisterMessage,
+} from '@fast-call/shared';
 import type { PingSink } from './fleet.js';
 
 const MAX_BACKOFF_MS = 10_000;
 
 /**
- * Streams pings to the ingest service over one WebSocket.
- * Pings are buffered during a tick and sent as a single batch frame on flush().
- * While disconnected, pings are dropped (and counted): a ping is only useful if it's fresh,
- * so replaying a backlog after reconnecting would just feed the dispatcher old positions.
+ * The crews' connection to the ingest service: one WebSocket carrying every unit.
+ *  - Pings are buffered during a tick and sent as one batch frame on flush(). While disconnected
+ *    they are dropped (and counted): replaying stale positions would mislead the dispatcher.
+ *  - Crew messages (offer answers, status reports) are the opposite: losing "I'm available again"
+ *    would strand a unit, so they queue while disconnected and are sent on reconnect.
+ *  - Commands from the dispatcher (offers, assignments) arrive on the same socket.
  */
 export class WebSocketSink implements PingSink {
   sent = 0;
   dropped = 0;
+  controlSent = 0;
+  onCommand: ((cmd: AgentCommand) => void) | undefined;
   private buffer: LocationPing[] = [];
+  private controlQueue: (OfferResponseMessage | CrewStatusMessage)[] = [];
   private ws: WebSocket | undefined;
   private backoffMs = 500;
   private closed = false;
 
   constructor(
     private readonly url: string,
-    private readonly agents: { agentId: string; capability: Capability }[],
+    /** Read at (re)connect time so the server learns each unit's current status. */
+    private readonly roster: () => RegisterMessage['agents'],
   ) {}
 
   get connected(): boolean {
@@ -34,7 +47,15 @@ export class WebSocketSink implements PingSink {
       console.log(`[sim] connected to ${this.url}`);
       this.backoffMs = 500;
       // Re-register on every (re)connect: the server may have restarted with empty state.
-      this.write({ type: 'register', agents: this.agents });
+      this.write({ type: 'register', agents: this.roster() });
+      for (const msg of this.controlQueue.splice(0)) this.sendControl(msg);
+    });
+    ws.addEventListener('message', (event) => {
+      try {
+        this.onCommand?.(JSON.parse(String(event.data)) as AgentCommand);
+      } catch (err) {
+        console.warn(`[sim] bad command from server: ${(err as Error).message}`);
+      }
     });
     ws.addEventListener('close', () => {
       if (this.closed) return;
@@ -60,6 +81,15 @@ export class WebSocketSink implements PingSink {
       this.dropped += this.buffer.length;
     }
     this.buffer = [];
+  }
+
+  sendControl(msg: OfferResponseMessage | CrewStatusMessage): void {
+    if (!this.connected) {
+      this.controlQueue.push(msg);
+      return;
+    }
+    this.write(msg);
+    this.controlSent++;
   }
 
   close(): void {

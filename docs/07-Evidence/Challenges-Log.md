@@ -19,6 +19,9 @@ updated: 2026-10-31
 | 5 | [[#5. Ambulances driving through a forest]] | Product realism / geospatial | "Something you noticed only by looking?" |
 | 6 | [[#6. One emergency, many retries: no duplicate ambulances]] | API design / Postgres concurrency | "How do you handle retries?" / "Idempotency?" |
 | 7 | [[#7. The schema that would never have been applied]] | Databases / DevOps | "A gotcha you avoided?" |
+| 8 | [[#8. One ambulance offered to 261 emergencies at once]] | Distributed systems / Redis | "Race condition?" ⭐ best story |
+| 9 | [[#9. Free ambulances invisible behind busy ones]] | Algorithms / geospatial | "A bug a test caught?" |
+| 10 | [[#10. Status reports arriving out of order]] | Distributed systems | "Ordering / consistency?" |
 
 ---
 
@@ -151,3 +154,43 @@ Typecheck, unit tests and the build **all passed**, and the feature was still br
 
 ### Lesson
 "Works on a fresh machine" and "works on mine" are different states. Make setup steps idempotent and run them every time, instead of relying on first-run hooks.
+
+---
+
+## 8. One ambulance offered to 261 emergencies at once
+**Date:** 2026-10-31 · **Commit:** Day 4 dispatcher · **Area:** dispatcher, Redis
+
+### 30-second answer
+> "The dispatcher runs 32 jobs in parallel. Claiming a unit looks simple: 'if it's AVAILABLE, mark it DISPATCHED'. But as two separate commands, many workers read AVAILABLE before any of them writes. I wrote a test that fires 500 calls at 50 ambulances at once and ran it with the naive claim: **one ambulance was offered to 261 calls simultaneously**, and 4–6 units were double-booked on every run. The fix is one Lua script that Redis runs atomically: check the heartbeat, check AVAILABLE, `SET lock NX` with a TTL, mark DISPATCHED. Same test: every unit offered exactly once, zero double bookings. Postgres also has a partial unique index as a last line of defence, so even a buggy lock can't put one unit on two live calls."
+
+### Details
+- **Why a lock *and* a status?** The lock (with TTL) covers the short window while an offer is open; the status keeps a unit busy for the whole call. Releases are compare-and-delete (only if the lock still holds *our* request id), so a slow worker can't release someone else's lock.
+- **Why the TTL?** If the dispatcher crashes mid-offer, the lock expires instead of locking the unit forever.
+- **Defence in depth:** Redis lock → DB `requests_one_live_call_per_unit` unique index → test that proves the DB refuses it.
+- **Kept in the code on purpose:** `FleetOps(redis, unsafeClaim = true)` exists only so the test can show the bug.
+- **Tests:** `never offers one unit to two calls when claims are atomic` / `DOES double-book units with a naive read-then-write claim`.
+
+---
+
+## 9. Free ambulances invisible behind busy ones
+**Date:** 2026-10-31 · **Area:** dispatcher candidate search
+
+### 30-second answer
+> "To find candidates I asked Redis for the 25 nearest units, *then* filtered out busy ones. The concurrency test showed only 25 of 50 units ever got used: once the 25 closest were busy, every new call saw '25 candidates, all busy' and waited, while free units sat just outside the top 25. Redis's GEOSEARCH can limit by distance but not by status. So if a full page comes back with nobody usable, I widen the page 4× and search the same ring again until the ring is exhausted. In a real spike, that's the difference between a call waiting and a free ambulance going out."
+
+### Details
+- **Found by:** `expected 50 offers, got 25` in the 500-vs-50 test.
+- **Scale-up option (later):** keep a separate GEO set of only AVAILABLE units, so search never sees busy ones. That costs an extra write on every status change, a tradeoff worth measuring at 10k units.
+
+---
+
+## 10. Status reports arriving out of order
+**Date:** 2026-10-31 · **Area:** dispatcher, crew messages
+
+### 30-second answer
+> "Crews report EN_ROUTE, AT_SCENE, TRANSPORTING, AT_HOSPITAL, AVAILABLE. The dispatcher processes jobs in parallel, so two reports from one crew can be handled out of order. A late EN_ROUTE applied after AVAILABLE would make a free ambulance look busy forever. Two fixes: every report carries the device's timestamp, and a Lua compare-and-set only applies a status if it's newer than the last one. And the call's state *walks forward* to the reported step: if AT_SCENE arrives before EN_ROUTE, the call goes ASSIGNED → EN_ROUTE → ARRIVED, and the late EN_ROUTE changes nothing."
+
+### Details
+- **Test:** `copes with crew reports processed out of order`.
+- **Related rule:** after a call is cancelled, only "I'm AVAILABLE again" is accepted from that crew.
+- **Another reliability choice:** while disconnected, the simulator **drops** stale GPS pings but **queues** crew messages, because losing "I'm free again" would strand a unit.

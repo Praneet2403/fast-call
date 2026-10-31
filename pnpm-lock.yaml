@@ -241,6 +241,21 @@ importers:
         specifier: ^8.3.5
         version: 8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(tsx@4.23.15)
 
+  apps/dispatcher:
+    dependencies:
+      '@fast-call/db':
+        specifier: workspace:*
+        version: link:../../packages/db
+      '@fast-call/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
+      bullmq:
+        specifier: ^6.5.1
+        version: 6.5.1(ioredis@6.0.0)
+      ioredis:
+        specifier: ^6.0.0
+        version: 6.0.0
+
   apps/simulator:
     dependencies:
       '@fast-call/roads':

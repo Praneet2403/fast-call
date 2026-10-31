@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url';
 import postgres from 'postgres';
 
 export type Sql = postgres.Sql;
+export type Tx = postgres.TransactionSql;
 
 export const DEFAULT_DATABASE_URL = 'postgres://dispatch:dispatch@localhost:5432/dispatch';
 

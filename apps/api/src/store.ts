@@ -1,22 +1,8 @@
 import { Redis } from 'ioredis';
+import { REDIS_KEYS } from '@fast-call/shared';
 import type { AgentStatus, Capability, LocationPing } from '@fast-call/shared';
 
-/**
- * Redis layout for live fleet state (the hot path):
- *   agents:geo          GEO set   agentId → position (GEOSEARCH for nearby units)
- *   agents:lastSeen     HASH      agentId → ts of the newest accepted ping
- *   agents:status       HASH      agentId → AgentStatus
- *   agents:capability   HASH      agentId → BLS | ALS
- *   agent:{id}:hb       STRING    with TTL; missing key = unit is stale
- * Fleet-wide hashes let a snapshot read all 10k units in 4 commands instead of 10k.
- */
-export const KEYS = {
-  geo: 'agents:geo',
-  lastSeen: 'agents:lastSeen',
-  status: 'agents:status',
-  capability: 'agents:capability',
-  heartbeat: (agentId: string) => `agent:${agentId}:hb`,
-} as const;
+export const KEYS = REDIS_KEYS;
 
 /**
  * Applies one ping atomically, and only if it's newer than the last one we accepted.
@@ -69,12 +55,16 @@ export class FleetStore {
     await this.redis.quit();
   }
 
-  /** Records capability, and marks the unit AVAILABLE only if it has no status yet (HSETNX). */
-  async register(agents: { agentId: string; capability: Capability }[]): Promise<void> {
+  /**
+   * Records each unit's capability. The device's own status wins when it sends one (it knows if
+   * it is mid-call); otherwise a brand-new unit starts AVAILABLE (HSETNX keeps any existing status).
+   */
+  async register(agents: { agentId: string; capability: Capability; status?: AgentStatus }[]): Promise<void> {
     const pipe = this.redis.pipeline();
-    for (const { agentId, capability } of agents) {
+    for (const { agentId, capability, status } of agents) {
       pipe.hset(KEYS.capability, agentId, capability);
-      pipe.hsetnx(KEYS.status, agentId, 'AVAILABLE' satisfies AgentStatus);
+      if (status) pipe.hset(KEYS.status, agentId, status);
+      else pipe.hsetnx(KEYS.status, agentId, 'AVAILABLE' satisfies AgentStatus);
     }
     await pipe.exec();
   }

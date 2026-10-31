@@ -4,7 +4,7 @@ import type { DispatchQueue } from '../queue.js';
 import { buildServer } from '../server.js';
 import { FleetStore } from '../store.js';
 
-const sql = await createTestSql();
+const sql = await createTestSql('api');
 
 /** Records enqueues instead of talking to BullMQ, so these tests only need Postgres. */
 class FakeQueue implements DispatchQueue {
@@ -12,6 +12,9 @@ class FakeQueue implements DispatchQueue {
   async enqueueMatch(requestId: string) {
     this.jobs.push(requestId);
   }
+  async enqueueOfferResponse() {}
+  async enqueueCrewStatus() {}
+  async enqueueCallCancelled() {}
   async close() {}
 }
 

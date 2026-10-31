@@ -3,6 +3,8 @@ export type { Sql } from './client.js';
 export { RequestNotFoundError, RequestRepo } from './requests.js';
 export type {
   CreateResult,
+  OfferRecord,
+  ResolveResult,
   NewRequest,
   RequestEvent,
   RequestRecord,

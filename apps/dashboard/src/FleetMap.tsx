@@ -1,15 +1,15 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { Map as MapLibreMap, NavigationControl, Popup, setWorkerUrl } from 'maplibre-gl';
 import type { ExpressionSpecification, GeoJSONSource, MapLayerMouseEvent } from 'maplibre-gl';
-import type { FeatureCollection, Point } from 'geojson';
+import type { FeatureCollection, LineString, Point } from 'geojson';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import maplibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
 import { HOSPITALS, JAIPUR_BOUNDS } from '@fast-call/shared';
-import type { FleetRow } from '@fast-call/shared';
-import { STATUS_COLORS } from './statusColors';
+import type { CallRow, FleetRow, FleetSnapshotMessage } from '@fast-call/shared';
+import { CALL_STATE_COLORS, STATUS_COLORS } from './statusColors';
 
 export interface FleetMapHandle {
-  setFleet(rows: FleetRow[]): void;
+  setSnapshot(snapshot: FleetSnapshotMessage): void;
 }
 
 const STYLE_URL = 'https://tiles.openfreemap.org/styles/positron';
@@ -37,6 +37,37 @@ function toGeoJSON(rows: FleetRow[]): FeatureCollection<Point> {
   };
 }
 
+const callColor = [
+  'match',
+  ['get', 'state'],
+  ...Object.entries(CALL_STATE_COLORS).flat(),
+  '#000000',
+] as unknown as ExpressionSpecification;
+
+function callsGeoJSON(calls: CallRow[]): FeatureCollection<Point> {
+  return {
+    type: 'FeatureCollection',
+    features: calls.map(([id, lng, lat, state, priority, agentId, createdAt]) => ({
+      type: 'Feature',
+      geometry: { type: 'Point', coordinates: [lng, lat] },
+      properties: { id, state, priority, agentId, createdAt },
+    })),
+  };
+}
+
+/** A line from each call to the unit offered or assigned to it: dashed while still only offered. */
+function linksGeoJSON(calls: CallRow[], agents: FleetRow[]): FeatureCollection<LineString> {
+  const positions = new Map(agents.map(([id, lng, lat]) => [id, [lng, lat]]));
+  return {
+    type: 'FeatureCollection',
+    features: calls.flatMap(([id, lng, lat, state, , agentId]) => {
+      const unit = agentId ? positions.get(agentId) : undefined;
+      if (!unit) return [];
+      return [{ type: 'Feature', geometry: { type: 'LineString', coordinates: [unit, [lng, lat]] }, properties: { id, state } }];
+    }) as FeatureCollection<LineString>['features'],
+  };
+}
+
 const hospitalsGeoJSON: FeatureCollection<Point> = {
   type: 'FeatureCollection',
   features: HOSPITALS.map((h) => ({
@@ -49,14 +80,20 @@ const hospitalsGeoJSON: FeatureCollection<Point> = {
 export const FleetMap = forwardRef<FleetMapHandle>(function FleetMap(_, ref) {
   const container = useRef<HTMLDivElement>(null);
   const map = useRef<MapLibreMap | null>(null);
-  const pending = useRef<FleetRow[] | null>(null);
+  const pending = useRef<FleetSnapshotMessage | null>(null);
   const [mapError, setMapError] = useState<string | null>(null);
 
+  const apply = (m: MapLibreMap, snap: FleetSnapshotMessage) => {
+    m.getSource<GeoJSONSource>('agents')?.setData(toGeoJSON(snap.agents));
+    m.getSource<GeoJSONSource>('calls')?.setData(callsGeoJSON(snap.calls));
+    m.getSource<GeoJSONSource>('links')?.setData(linksGeoJSON(snap.calls, snap.agents));
+  };
+
   useImperativeHandle(ref, () => ({
-    setFleet(rows) {
-      const source = map.current?.getSource<GeoJSONSource>('agents');
-      if (source) source.setData(toGeoJSON(rows));
-      else pending.current = rows; // style not loaded yet; apply on load
+    setSnapshot(snap) {
+      const m = map.current;
+      if (m?.getSource('agents')) apply(m, snap);
+      else pending.current = snap; // style not loaded yet; apply on load
     },
   }));
 
@@ -112,8 +149,24 @@ export const FleetMap = forwardRef<FleetMapHandle>(function FleetMap(_, ref) {
         paint: { 'line-color': '#0f172a', 'line-width': 1, 'line-dasharray': [3, 3], 'line-opacity': 0.4 },
       });
 
-      m.addSource('agents', { type: 'geojson', data: toGeoJSON(pending.current ?? []) });
-      pending.current = null;
+      // Unit-to-call links go under the units; calls go on top of everything.
+      m.addSource('links', { type: 'geojson', data: linksGeoJSON([], []) });
+      m.addLayer({
+        id: 'links-offered',
+        type: 'line',
+        source: 'links',
+        filter: ['==', ['get', 'state'], 'OFFERED'],
+        paint: { 'line-color': '#f59e0b', 'line-width': 2, 'line-dasharray': [2, 2] },
+      });
+      m.addLayer({
+        id: 'links-assigned',
+        type: 'line',
+        source: 'links',
+        filter: ['!=', ['get', 'state'], 'OFFERED'],
+        paint: { 'line-color': '#2563eb', 'line-width': 2, 'line-opacity': 0.8 },
+      });
+
+      m.addSource('agents', { type: 'geojson', data: toGeoJSON([]) });
       m.addLayer({
         id: 'agents',
         type: 'circle',
@@ -149,7 +202,39 @@ export const FleetMap = forwardRef<FleetMapHandle>(function FleetMap(_, ref) {
         paint: { 'text-color': '#991b1b', 'text-halo-color': '#ffffff', 'text-halo-width': 1.5 },
       });
 
+      m.addSource('calls', { type: 'geojson', data: callsGeoJSON([]) });
+      m.addLayer({
+        id: 'calls',
+        type: 'circle',
+        source: 'calls',
+        paint: {
+          // Bigger = more urgent. White centre with a thick state-coloured ring reads as "incident".
+          'circle-radius': ['match', ['get', 'priority'], 'P1', 9, 'P2', 7, 5.5],
+          'circle-color': '#ffffff',
+          'circle-stroke-color': callColor,
+          'circle-stroke-width': ['match', ['get', 'priority'], 'P1', 4, 3],
+        },
+      });
+      if (pending.current) apply(m, pending.current);
+      pending.current = null;
+
       const popup = new Popup({ closeButton: false, closeOnClick: false });
+      m.on('mouseenter', 'calls', (e: MapLayerMouseEvent) => {
+        const f = e.features?.[0];
+        if (!f) return;
+        m.getCanvas().style.cursor = 'pointer';
+        const p = f.properties as { id: string; state: string; priority: string; agentId?: string; createdAt: number };
+        const waited = Math.round((Date.now() - p.createdAt) / 1000);
+        popup
+          .setLngLat((f.geometry as Point).coordinates as [number, number])
+          .setHTML(`<strong>${p.priority} call</strong> · ${p.state}<br/>${p.agentId ? `unit ${p.agentId}<br/>` : ''}open ${waited}s`)
+          .addTo(m);
+      });
+      m.on('mouseleave', 'calls', () => {
+        m.getCanvas().style.cursor = '';
+        popup.remove();
+      });
+
       m.on('mouseenter', 'agents', (e: MapLayerMouseEvent) => {
         const f = e.features?.[0];
         if (!f) return;

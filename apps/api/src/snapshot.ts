@@ -1,4 +1,4 @@
-import type { Capability, DisplayStatus, FleetRow, FleetSnapshotMessage } from '@fast-call/shared';
+import type { CallRow, Capability, DisplayStatus, FleetRow, FleetSnapshotMessage, RequestState } from '@fast-call/shared';
 import type { RawFleet } from './store.js';
 
 /** Nearest-rank percentile of an ascending-sorted array. */
@@ -9,7 +9,13 @@ export function percentile(sorted: number[], p: number): number {
 }
 
 /** Pure: turns raw Redis state into the message dashboards receive. */
-export function buildSnapshot(raw: RawFleet, now: number, heartbeatTtlSec: number): FleetSnapshotMessage {
+export function buildSnapshot(
+  raw: RawFleet,
+  now: number,
+  heartbeatTtlSec: number,
+  calls: CallRow[] = [],
+  finishedLastHour: Partial<Record<RequestState, number>> = {},
+): FleetSnapshotMessage {
   const staleAfterMs = heartbeatTtlSec * 1000;
   const agents: FleetRow[] = [];
   const freshness: number[] = [];
@@ -35,6 +41,8 @@ export function buildSnapshot(raw: RawFleet, now: number, heartbeatTtlSec: numbe
   }
 
   freshness.sort((a, b) => a - b);
+  const live: Partial<Record<RequestState, number>> = {};
+  for (const c of calls) live[c[3]] = (live[c[3]] ?? 0) + 1;
   return {
     type: 'fleet.snapshot',
     ts: now,
@@ -48,6 +56,13 @@ export function buildSnapshot(raw: RawFleet, now: number, heartbeatTtlSec: numbe
       freshnessP95Ms: percentile(freshness, 95),
     },
     agents,
+    calls,
+    callStats: {
+      live,
+      completedLastHour: finishedLastHour.COMPLETED ?? 0,
+      expiredLastHour: finishedLastHour.EXPIRED ?? 0,
+      cancelledLastHour: finishedLastHour.CANCELLED ?? 0,
+    },
   };
 }
 
