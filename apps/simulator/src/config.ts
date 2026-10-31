@@ -37,6 +37,22 @@ export interface SimConfig {
   callsPerMin: number;
   /** Base URL of the request API. */
   apiUrl: string;
+  chaos: ChaosConfig;
+}
+
+/** Failure injection, all off by default. */
+export interface ChaosConfig {
+  /** Share of units whose device dies (no pings, no messages, ignores commands). Also used by SIGUSR2. */
+  killPct: number;
+  /** Kill `killPct` of the fleet this many seconds after start. 0 = only on SIGUSR2. */
+  killAtSec: number;
+  /** Dead devices come back after this long. 0 = never. */
+  reviveAfterSec: number;
+  /** Probability that any single ping is lost. */
+  dropPct: number;
+  /** Probability that a ping is delayed by `delayMs` (so it arrives after newer ones). */
+  delayPct: number;
+  delayMs: number;
 }
 
 export function loadConfig(): SimConfig {
@@ -52,6 +68,14 @@ export function loadConfig(): SimConfig {
     ingestUrl: process.env.INGEST_URL ?? 'ws://127.0.0.1:4000/ws/agents',
     callsPerMin: floatEnv('CALLS_PER_MIN', 6, 0, 10_000),
     apiUrl: process.env.API_URL ?? 'http://127.0.0.1:4000',
+    chaos: {
+      killPct: floatEnv('CHAOS_KILL_PCT', 0.1, 0, 1),
+      killAtSec: intEnv('CHAOS_KILL_AT_SEC', 0),
+      reviveAfterSec: intEnv('CHAOS_REVIVE_AFTER_SEC', 0),
+      dropPct: floatEnv('CHAOS_DROP_PCT', 0, 0, 1),
+      delayPct: floatEnv('CHAOS_DELAY_PCT', 0, 0, 1),
+      delayMs: intEnv('CHAOS_DELAY_MS', 8_000),
+    },
   };
   if (config.pingJitterMs >= config.pingIntervalMs) {
     throw new Error('PING_JITTER_MS must be smaller than PING_INTERVAL_MS');

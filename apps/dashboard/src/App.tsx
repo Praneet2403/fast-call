@@ -35,7 +35,19 @@ export function App() {
           <Stat label="Stale GPS" value={stats?.stale ?? '—'} tone={stats?.stale ? 'warn' : undefined} />
           <Stat label="Freshness p50" value={stats ? seconds(stats.freshnessP50Ms) : '—'} />
           <Stat label="Freshness p95" value={stats ? seconds(stats.freshnessP95Ms) : '—'} />
+          <Stat
+            label="Zones with no free unit"
+            value={stats ? `${stats.uncoveredZones} / ${stats.totalZones}` : '—'}
+            tone={stats && stats.uncoveredZones > stats.totalZones * 0.2 ? 'warn' : undefined}
+          />
         </section>
+
+        {calls && calls.needsAttention.length > 0 && (
+          <section className="alert">
+            <strong>{calls.needsAttention.length} on-scene call{calls.needsAttention.length > 1 ? 's' : ''} need a supervisor</strong>
+            <span>The crew is on scene but their unit has gone silent. No second ambulance is sent automatically.</span>
+          </section>
+        )}
 
         <section>
           <h2>Calls</h2>
@@ -70,6 +82,12 @@ export function App() {
             </li>
             <li>
               <span className="dot dot-call" /> Call (bigger = more urgent)
+            </li>
+            <li>
+              <span className="zone zone-gap" /> Zone with no free unit
+            </li>
+            <li>
+              <span className="zone zone-thin" /> Zone down to its last unit
             </li>
             <li>
               <span className="link link-offered" /> Offered to unit

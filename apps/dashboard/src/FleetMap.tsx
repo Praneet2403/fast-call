@@ -1,11 +1,11 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { Map as MapLibreMap, NavigationControl, Popup, setWorkerUrl } from 'maplibre-gl';
 import type { ExpressionSpecification, GeoJSONSource, MapLayerMouseEvent } from 'maplibre-gl';
-import type { FeatureCollection, LineString, Point } from 'geojson';
+import type { FeatureCollection, LineString, Point, Polygon } from 'geojson';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import maplibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
-import { HOSPITALS, JAIPUR_BOUNDS } from '@fast-call/shared';
-import type { CallRow, FleetRow, FleetSnapshotMessage } from '@fast-call/shared';
+import { HOSPITALS, JAIPUR_BOUNDS, zoneBoundary } from '@fast-call/shared';
+import type { CallRow, FleetRow, FleetSnapshotMessage, ZoneRow } from '@fast-call/shared';
 import { CALL_STATE_COLORS, STATUS_COLORS } from './statusColors';
 
 export interface FleetMapHandle {
@@ -68,6 +68,19 @@ function linksGeoJSON(calls: CallRow[], agents: FleetRow[]): FeatureCollection<L
   };
 }
 
+/** Zone outlines never change, so compute each hexagon's polygon once. */
+const boundaryCache = new Map<string, [number, number][]>();
+function zonesGeoJSON(zones: ZoneRow[]): FeatureCollection<Polygon> {
+  return {
+    type: 'FeatureCollection',
+    features: zones.map(([cell, available, units]) => {
+      let ring = boundaryCache.get(cell);
+      if (!ring) boundaryCache.set(cell, (ring = zoneBoundary(cell)));
+      return { type: 'Feature', geometry: { type: 'Polygon', coordinates: [ring] }, properties: { cell, available, units } };
+    }),
+  };
+}
+
 const hospitalsGeoJSON: FeatureCollection<Point> = {
   type: 'FeatureCollection',
   features: HOSPITALS.map((h) => ({
@@ -84,6 +97,7 @@ export const FleetMap = forwardRef<FleetMapHandle>(function FleetMap(_, ref) {
   const [mapError, setMapError] = useState<string | null>(null);
 
   const apply = (m: MapLibreMap, snap: FleetSnapshotMessage) => {
+    m.getSource<GeoJSONSource>('zones')?.setData(zonesGeoJSON(snap.zones));
     m.getSource<GeoJSONSource>('agents')?.setData(toGeoJSON(snap.agents));
     m.getSource<GeoJSONSource>('calls')?.setData(callsGeoJSON(snap.calls));
     m.getSource<GeoJSONSource>('links')?.setData(linksGeoJSON(snap.calls, snap.agents));
@@ -147,6 +161,24 @@ export const FleetMap = forwardRef<FleetMapHandle>(function FleetMap(_, ref) {
         type: 'line',
         source: 'service-area',
         paint: { 'line-color': '#0f172a', 'line-width': 1, 'line-dasharray': [3, 3], 'line-opacity': 0.4 },
+      });
+
+      // Coverage: red = no free unit in this ~5 km² zone, amber = down to the last one.
+      m.addSource('zones', { type: 'geojson', data: zonesGeoJSON([]) });
+      m.addLayer({
+        id: 'zones-fill',
+        type: 'fill',
+        source: 'zones',
+        paint: {
+          'fill-color': ['step', ['get', 'available'], '#dc2626', 1, '#f59e0b', 2, '#16a34a'],
+          'fill-opacity': ['step', ['get', 'available'], 0.22, 1, 0.12, 2, 0],
+        },
+      });
+      m.addLayer({
+        id: 'zones-line',
+        type: 'line',
+        source: 'zones',
+        paint: { 'line-color': '#0f172a', 'line-opacity': 0.08, 'line-width': 1 },
       });
 
       // Unit-to-call links go under the units; calls go on top of everything.

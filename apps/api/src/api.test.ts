@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { allServiceZones, zoneOf } from '@fast-call/shared';
 import { parseAgentMessage } from './messages.js';
 import { buildSnapshot, percentile } from './snapshot.js';
 import { FleetStore, KEYS } from './store.js';
@@ -59,6 +60,55 @@ describe('buildSnapshot', () => {
     expect(snap.stats).toMatchObject({ total: 3, available: 1, stale: 1, als: 1, bls: 2 });
     expect(snap.stats.freshnessP50Ms).toBe(2_000);
     expect(snap.agents.find((a) => a[0] === 'A-0003')?.[3]).toBe('STALE');
+  });
+
+  it('flags on-scene calls whose unit has gone silent for a human to check', () => {
+    const now = 100_000;
+    const snap = buildSnapshot(
+      {
+        positions: [
+          ['A-0001', 75.8, 26.9],
+          ['A-0002', 75.81, 26.91],
+        ],
+        lastSeen: { 'A-0001': String(now - 60_000), 'A-0002': String(now - 1_000) }, // A-0001 silent for a minute
+        status: { 'A-0001': 'AT_SCENE', 'A-0002': 'AT_SCENE' },
+        capability: {},
+      },
+      now,
+      15,
+      [
+        ['call-1', 75.8, 26.9, 'ARRIVED', 'P1', 'A-0001', now - 300_000],
+        ['call-2', 75.81, 26.91, 'ARRIVED', 'P2', 'A-0002', now - 300_000],
+        ['call-3', 75.8, 26.9, 'EN_ROUTE', 'P2', 'A-0001', now - 300_000], // sweeper's job, not a human's
+      ],
+    );
+    expect(snap.callStats.needsAttention).toEqual(['call-1']);
+  });
+
+  it('counts free units per H3 zone and reports zones with no free unit as uncovered', () => {
+    const now = 100_000;
+    const fresh = String(now - 1_000);
+    const snap = buildSnapshot(
+      {
+        // Two units ~100 m apart (same zone), one ~8 km away.
+        positions: [
+          ['A-0001', 75.8, 26.9],
+          ['A-0002', 75.801, 26.9],
+          ['A-0003', 75.86, 26.8],
+        ],
+        lastSeen: { 'A-0001': fresh, 'A-0002': fresh, 'A-0003': fresh },
+        status: { 'A-0001': 'AVAILABLE', 'A-0002': 'EN_ROUTE', 'A-0003': 'AVAILABLE' },
+        capability: {},
+      },
+      now,
+      15,
+    );
+    const zone = (cell: string) => snap.zones.find((z) => z[0] === cell)!;
+    const shared = zoneOf({ lat: 26.9, lng: 75.8 });
+    expect(zone(shared).slice(1)).toEqual([1, 2]); // 1 free of 2 units
+    expect(zone(zoneOf({ lat: 26.8, lng: 75.86 })).slice(1)).toEqual([1, 1]);
+    expect(snap.stats.totalZones).toBe(allServiceZones().length);
+    expect(snap.stats.uncoveredZones).toBe(allServiceZones().length - 2);
   });
 });
 

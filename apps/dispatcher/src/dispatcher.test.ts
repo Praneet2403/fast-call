@@ -26,6 +26,9 @@ const config: DispatcherConfig = {
   maxWaitMs: 180_000,
   retryDelayMs: 2_000,
   concurrency: 1,
+  sweepIntervalMs: 5_000,
+  stallMs: 20_000,
+  offerGraceMs: 5_000,
 };
 
 /** Records what the dispatcher would send to crews instead of publishing it. */
@@ -44,6 +47,10 @@ class RecordingScheduler implements Scheduler {
   }
   async offerTimeout(offerId: string) {
     this.timeouts.push(offerId);
+  }
+  rescues: string[] = [];
+  async matchRescue(requestId: string) {
+    this.rescues.push(requestId);
   }
 }
 

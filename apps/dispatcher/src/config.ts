@@ -21,6 +21,12 @@ export interface DispatcherConfig {
   /** Delay before re-checking a call when no unit is free right now. */
   retryDelayMs: number;
   concurrency: number;
+  /** How often the sweeper looks for stuck work. */
+  sweepIntervalMs: number;
+  /** A CREATED/MATCHING call with no progress for this long is re-enqueued. */
+  stallMs: number;
+  /** Grace period past an offer's expiry before the sweeper settles it. */
+  offerGraceMs: number;
 }
 
 export function loadConfig(): DispatcherConfig {
@@ -33,5 +39,8 @@ export function loadConfig(): DispatcherConfig {
     maxWaitMs: intEnv('MAX_WAIT_MS', 180_000),
     retryDelayMs: intEnv('RETRY_DELAY_MS', 2_000),
     concurrency: intEnv('CONCURRENCY', 32),
+    sweepIntervalMs: intEnv('SWEEP_INTERVAL_MS', 5_000),
+    stallMs: intEnv('STALL_MS', 20_000),
+    offerGraceMs: intEnv('OFFER_GRACE_MS', 5_000),
   };
 }

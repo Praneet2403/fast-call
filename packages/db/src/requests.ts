@@ -232,6 +232,46 @@ export class RequestRepo {
     return row ? toOffer(row) : null;
   }
 
+  /** Readiness probe: can we run a query right now? */
+  async ping(): Promise<void> {
+    await this.sql`SELECT 1`;
+  }
+
+  // ---- sweeper queries: finding work that fell through the cracks ----
+
+  /** Calls sitting in CREATED/MATCHING with no progress for longer than `olderThanMs`. */
+  async stalledCalls(olderThanMs: number): Promise<{ id: string; state: RequestState }[]> {
+    return this.sql<{ id: string; state: RequestState }[]>`
+      SELECT id, state FROM requests
+      WHERE state IN ('CREATED', 'MATCHING') AND updated_at < now() - ${olderThanMs} * interval '1 millisecond'
+      ORDER BY created_at
+      LIMIT 500`;
+  }
+
+  /** Offers still PENDING well after they expired: their timeout job was lost (e.g. a crash). */
+  async overdueOffers(graceMs: number): Promise<string[]> {
+    const rows = await this.sql<{ id: string }[]>`
+      SELECT id FROM offers
+      WHERE outcome = 'PENDING' AND expires_at < now() - ${graceMs} * interval '1 millisecond'
+      LIMIT 500`;
+    return rows.map((r) => r.id);
+  }
+
+  /** Calls a unit is driving to. If that unit goes silent, the call must be reassigned. */
+  async callsBeingDrivenTo(): Promise<{ id: string; agentId: string }[]> {
+    return this.sql<{ id: string; agentId: string }[]>`
+      SELECT id, assigned_agent_id AS agent_id FROM requests WHERE state IN ('ASSIGNED', 'EN_ROUTE')`;
+  }
+
+  /** Units that legitimately hold a call: an open offer, or an assigned live call. */
+  async busyAgentIds(): Promise<Set<string>> {
+    const rows = await this.sql<{ agentId: string }[]>`
+      SELECT agent_id FROM offers WHERE outcome = 'PENDING'
+      UNION
+      SELECT assigned_agent_id FROM requests WHERE state IN ('ASSIGNED', 'EN_ROUTE', 'ARRIVED')`;
+    return new Set(rows.map((r) => r.agentId));
+  }
+
   // ---- dashboard read model ----
 
   /** Live calls with the unit assigned to them, or currently being offered them. */

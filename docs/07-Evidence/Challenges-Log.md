@@ -22,6 +22,9 @@ updated: 2026-10-31
 | 8 | [[#8. One ambulance offered to 261 emergencies at once]] | Distributed systems / Redis | "Race condition?" ⭐ best story |
 | 9 | [[#9. Free ambulances invisible behind busy ones]] | Algorithms / geospatial | "A bug a test caught?" |
 | 10 | [[#10. Status reports arriving out of order]] | Distributed systems | "Ordering / consistency?" |
+| 11 | [[#11. What happens when things die: the sweeper]] | Reliability / self-healing | "How does your system recover from failures?" |
+| 12 | [[#12. Health check that lied]] | Operations | "Liveness vs readiness?" |
+| 13 | [[#13. Chaos testing: killing 10% of the fleet on purpose]] | Reliability / testing | "How did you test failure handling?" ⭐ |
 
 ---
 
@@ -194,3 +197,47 @@ Typecheck, unit tests and the build **all passed**, and the feature was still br
 - **Test:** `copes with crew reports processed out of order`.
 - **Related rule:** after a call is cancelled, only "I'm AVAILABLE again" is accepted from that crew.
 - **Another reliability choice:** while disconnected, the simulator **drops** stale GPS pings but **queues** crew messages, because losing "I'm free again" would strand a unit.
+
+---
+
+## 11. What happens when things die: the sweeper
+**Date:** 2026-10-31 · **Area:** dispatcher reliability
+
+### 30-second answer
+> "The happy path is event-driven: jobs, timeout jobs, crew reports. Events get lost when things crash: the API can die between saving a call and queueing it, a worker can die after claiming an ambulance but before offering it, an ambulance's radio can go dark mid-drive. So I added a sweeper, a reconciliation loop that runs every 5 seconds and compares what *should* be true with what *is*. It re-queues calls that stopped moving, settles offers whose timeout was lost, reassigns calls whose ambulance went silent, and frees ambulances orphaned by a crash. Every repair is idempotent, and only one dispatcher instance sweeps at a time, chosen by a Redis leader key with a TTL."
+
+### The four repairs (each has a test that stages the failure)
+| Lost event | How the sweeper notices | Repair |
+|---|---|---|
+| API crashed after saving a call, before queueing | `CREATED`/`MATCHING` with no progress for 20 s | Re-queue a match job (deduplicated per 30 s window) |
+| Offer timeout job lost | `PENDING` offer past `expires_at` | Settle it as timed out → re-offer |
+| Unit's GPS goes dark while driving to a call | Call `ASSIGNED`/`EN_ROUTE`, unit's heartbeat key gone | Call → `MATCHING`, unit → `OFFLINE`, offer to the next unit |
+| Worker crashed between claim and offer | Unit `DISPATCHED`, no lock, no offer, no call | Unit → `AVAILABLE` (Lua CAS, skipped if a new claim landed) |
+
+### Design decisions worth defending
+- **Why not just make every step transactional?** Redis and Postgres can't share one transaction. A reconciliation loop is the standard answer, the same idea as Kubernetes controllers.
+- **Calls already ARRIVED aren't reassigned** when the unit goes silent: the crew is with the patient (often in a building with no signal), not lost.
+- **A reassigned unit comes back by itself:** it stays `OFFLINE` until it reports `AVAILABLE`, and that report is always accepted, even for a call it no longer holds.
+- **Leader election** = `SET dispatcher:sweeper-leader <id> NX PX 15000` + renew. If the leader dies, its key expires and another instance takes over (tested).
+
+---
+
+## 12. Health check that lied
+**Date:** 2026-10-31 · **Area:** operations
+
+### 30-second answer
+> "On Day 4 Docker stopped, taking Postgres and Redis with it, yet my API's `/health` still returned 'ok', because it only proved the process was alive. Those are two different questions. *Liveness*: should this process be restarted? *Readiness*: can it serve traffic right now? I kept `/health` as liveness and added `/ready`, which pings Redis and Postgres with a 1-second timeout each and returns 503 with per-dependency detail. A load balancer should route on readiness. Restarting the process on readiness would just restart-loop it while the database is down."
+
+### Tests
+`reports ready (200) when Redis and Postgres both answer` / `reports not ready (503) with per-dependency detail when Redis is unreachable`.
+
+---
+
+## 13. Chaos testing: killing 10% of the fleet on purpose
+**Date:** 2026-10-31 · **Full write-up:** [[Postmortem-2026-10-31-chaos]]
+
+### 30-second answer
+> "Unit tests prove the pieces; I wanted proof the whole system heals. I built failure injection into the simulator: kill a share of unit devices, drop pings, delay pings so they arrive out of order. Then I ran it live under heavy load. I killed 100 of 1,000 ambulances, 11 of them mid-call, and then `kill -9`'d the dispatcher for 20 seconds. Results: every call whose ambulance was still driving was reassigned about 16 seconds after the device died. The 26 calls that came in while the dispatcher was dead were all picked up after restart. Zero double bookings, zero lost calls, zero failed jobs. It also found a real gap: calls where the crew was already on scene when the unit died were stuck forever and nobody was told. I fixed that with a supervisor alert, deliberately not an automatic second ambulance."
+
+### Numbers to remember
+100 units killed (11 mid-call) · 4/4 driving calls reassigned in ~16 s · 26-call backlog cleared after a dispatcher `kill -9` (p50 wait 8.4 s) · 0 stuck · 0 double-booked · 1,330 out-of-order pings rejected.

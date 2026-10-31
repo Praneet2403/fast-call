@@ -12,6 +12,7 @@
     "@fast-call/db": "workspace:*",
     "@fast-call/shared": "workspace:*",
     "bullmq": "^6.5.1",
-    "ioredis": "^6.0.0"
+    "ioredis": "^6.0.0",
+    "pino": "^10.4.0"
   }
 }

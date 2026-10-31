@@ -43,7 +43,28 @@ export async function buildServer(config: ApiConfig, deps: ServerDeps) {
   let lastSnapshotBytes = 0;
   let lastSnapshotBuildMs = 0;
 
+  /** Liveness: the process is up. Used to decide "restart me?", so it checks nothing else. */
   app.get('/health', async () => ({ ok: true }));
+
+  /**
+   * Readiness: can this instance do its job? Checks Redis and Postgres, each with a short timeout.
+   * A load balancer should stop sending traffic on 503. (Day 4 lesson: /health said "ok" while
+   * Docker, and with it both databases, was down.)
+   */
+  app.get('/ready', async (_req, reply) => {
+    const probe = async (name: string, fn: () => Promise<unknown>) => {
+      const started = performance.now();
+      try {
+        await Promise.race([fn(), new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 1_000))]);
+        return { name, ok: true, ms: Math.round(performance.now() - started) };
+      } catch (err) {
+        return { name, ok: false, error: (err as Error).message };
+      }
+    };
+    const checks = await Promise.all([probe('redis', () => store.redis.ping()), probe('postgres', () => deps.requests.ping())]);
+    const ok = checks.every((c) => c.ok);
+    return reply.code(ok ? 200 : 503).send({ ok, checks });
+  });
 
   app.get('/stats', async () => ({
     ingest: counters,
@@ -124,9 +145,11 @@ export async function buildServer(config: ApiConfig, deps: ServerDeps) {
     socket.on('close', () => dashboards.delete(socket));
   });
 
+  // Every interval: rebuild the fleet picture, publish zone coverage for the dispatcher, and push
+  // the snapshot to any dashboards. Zones are needed even when nobody is watching.
   let broadcasting = false;
   const timer = setInterval(async () => {
-    if (dashboards.size === 0 || broadcasting) return; // skip a tick rather than overlap
+    if (broadcasting) return; // skip a tick rather than overlap
     broadcasting = true;
     try {
       const started = performance.now();
@@ -136,6 +159,8 @@ export async function buildServer(config: ApiConfig, deps: ServerDeps) {
         deps.requests.finishedLastHour(),
       ]);
       const snapshot = buildSnapshot(fleet, Date.now(), config.heartbeatTtlSec, calls, finished);
+      await store.writeZones(snapshot.zones);
+      if (dashboards.size === 0) return;
       const payload = JSON.stringify(snapshot); // serialise once, send to every dashboard
       lastSnapshotBuildMs = Math.round(performance.now() - started);
       lastSnapshotBytes = Buffer.byteLength(payload);

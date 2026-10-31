@@ -98,15 +98,15 @@ updated: 2026-10-31
   - ✅ End-to-end flow live on the map; concurrency test passes
 
 ## Phase 3: Failure handling + zones (Day 5)
-- [ ] 🧑 Stale agents: expired heartbeat → excluded from search; grey on the map
-- [ ] 🧑 Agent dies mid-trip → request goes back to MATCHING automatically
-- [ ] 🧑 Sweeper (every 5 s): fix requests stuck past their deadline
-- [ ] 🧑 Simulator chaos flags: `--kill-pct`, `--drop-pings`, `--delay-pings`
-- [ ] 🧑 Kill the dispatcher mid-run and restart → no lost requests
-- [ ] 🧱 `pino` logs with `requestId` on every line
-- [ ] 🧑 H3 (`h3-js`): cell per agent on ping; per-cell available counts in Redis
-- [ ] 🧑 One short postmortem of the worst thing that broke
-  - ✅ Kill 10% of agents under load → every affected request is reassigned or expired, none stuck; recorded
+- [x] 🧑 Stale agents: expired heartbeat → excluded from search; grey on the map
+- [x] 🧑 Agent dies mid-trip → request goes back to MATCHING automatically
+- [x] 🧑 Sweeper (every 5 s): fix requests stuck past their deadline
+- [x] 🧑 Simulator chaos: `CHAOS_KILL_PCT` (+ `kill -USR2 <pid>` on demand), `CHAOS_DROP_PCT`, `CHAOS_DELAY_PCT` + `CHAOS_DELAY_MS`, optional revive
+- [x] 🧑 Kill the dispatcher mid-run and restart → no lost requests (`kill -9`, 20 s down, 26-call backlog cleared, 0 stuck)
+- [x] 🧱 `pino` logs with `requestId` on every line
+- [x] 🧑 H3 zones (res 7, 103 hexagons): free units per zone published to Redis `zones:available` every second; coverage gaps drawn on the map
+- [x] 🧑 One short postmortem of the worst thing that broke → [[Postmortem-2026-10-31-chaos]]
+  - ✅ Kill 10% of agents under load → every affected request is reassigned or expired, none stuck; recorded (4/4 driving calls reassigned in ~16 s; 7 on-scene calls flagged for a supervisor)
 
 ## Phase 4: Smart ranking + demand forecast (Day 6)
 - [ ] 🧑 ETA v0: **A\* road distance** (graph already built) ÷ speed. Measured road/straight-line factor in Jaipur = 1.24

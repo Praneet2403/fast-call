@@ -46,7 +46,24 @@ redis.call('HSET', KEYS[1], ARGV[1], ARGV[2])
 return 1
 `;
 
+/** Become (or stay) leader: refresh the TTL if we hold the key, take it if nobody does. */
+const LEAD_LUA = `
+if redis.call('GET', KEYS[1]) == ARGV[1] then return redis.call('PEXPIRE', KEYS[1], ARGV[2]) end
+if redis.call('SET', KEYS[1], ARGV[1], 'NX', 'PX', ARGV[2]) then return 1 end
+return 0
+`;
+
+/** Free a unit stuck in DISPATCHED, unless something claimed it (took the lock) in the meantime. */
+const FREE_ORPHAN_LUA = `
+if redis.call('EXISTS', KEYS[2]) == 1 then return 0 end
+if redis.call('HGET', KEYS[1], ARGV[1]) ~= 'DISPATCHED' then return 0 end
+redis.call('HSET', KEYS[1], ARGV[1], 'AVAILABLE')
+return 1
+`;
+
 type FleetRedis = Redis & {
+  tryLead(key: string, instanceId: string, ttlMs: number): Promise<number>;
+  freeOrphan(statusKey: string, lockKey: string, agentId: string): Promise<number>;
   statusIfNewer(statusKey: string, tsKey: string, agentId: string, status: string, ts: number): Promise<number>;
   claimUnit(statusKey: string, lockKey: string, hbKey: string, agentId: string, requestId: string, ttlMs: number): Promise<number>;
   unclaimUnit(statusKey: string, lockKey: string, agentId: string, requestId: string): Promise<number>;
@@ -69,6 +86,8 @@ export class FleetOps {
     this.redis.defineCommand('unclaimUnit', { numberOfKeys: 2, lua: UNCLAIM_LUA });
     this.redis.defineCommand('releaseLock', { numberOfKeys: 1, lua: RELEASE_LUA });
     this.redis.defineCommand('statusIfNewer', { numberOfKeys: 2, lua: STATUS_IF_NEWER_LUA });
+    this.redis.defineCommand('tryLead', { numberOfKeys: 1, lua: LEAD_LUA });
+    this.redis.defineCommand('freeOrphan', { numberOfKeys: 2, lua: FREE_ORPHAN_LUA });
   }
 
   /**
@@ -150,6 +169,37 @@ export class FleetOps {
   /** Returns false if a newer report for this unit was already applied. */
   async setCrewStatus(agentId: string, status: AgentStatus, ts: number): Promise<boolean> {
     return (await this.redis.statusIfNewer(REDIS_KEYS.status, REDIS_KEYS.statusTs, agentId, status, ts)) === 1;
+  }
+
+  // ---- used by the sweeper ----
+
+  /** Only one dispatcher instance should sweep; the key's TTL hands over leadership if it dies. */
+  async tryLead(instanceId: string, ttlMs: number): Promise<boolean> {
+    return (await this.redis.tryLead('dispatcher:sweeper-leader', instanceId, ttlMs)) === 1;
+  }
+
+  /** Which of these units still have a live GPS heartbeat. */
+  async alive(agentIds: string[]): Promise<Set<string>> {
+    if (agentIds.length === 0) return new Set();
+    const pipe = this.redis.pipeline();
+    for (const id of agentIds) pipe.exists(REDIS_KEYS.heartbeat(id));
+    const res = (await pipe.exec())!;
+    return new Set(agentIds.filter((_, i) => res[i]![1] === 1));
+  }
+
+  /** Units marked DISPATCHED that no longer hold an offer lock: candidates for being orphaned. */
+  async dispatchedWithoutLock(): Promise<string[]> {
+    const all = await this.redis.hgetall(REDIS_KEYS.status);
+    const dispatched = Object.keys(all).filter((id) => all[id] === 'DISPATCHED');
+    if (dispatched.length === 0) return [];
+    const pipe = this.redis.pipeline();
+    for (const id of dispatched) pipe.exists(REDIS_KEYS.lock(id));
+    const res = (await pipe.exec())!;
+    return dispatched.filter((_, i) => res[i]![1] === 0);
+  }
+
+  async freeOrphan(agentId: string): Promise<boolean> {
+    return (await this.redis.freeOrphan(REDIS_KEYS.status, REDIS_KEYS.lock(agentId), agentId)) === 1;
   }
 
   async publish(command: AgentCommand): Promise<void> {

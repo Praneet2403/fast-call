@@ -7,6 +7,7 @@
  *   agents:statusTs     HASH      agentId → device ts of the newest crew status report
  *   agent:{id}:hb       STRING    with TTL; missing key = unit is stale
  *   agent:{id}:lock     STRING    requestId holding the unit while an offer is open (with TTL)
+ *   zones:available     HASH      H3 cell → free units in it (rewritten every second by the API)
  * Fleet-wide hashes let a snapshot read all 10k units in 4 commands instead of 10k.
  */
 export const REDIS_KEYS = {
@@ -17,4 +18,5 @@ export const REDIS_KEYS = {
   statusTs: 'agents:statusTs',
   heartbeat: (agentId: string) => `agent:${agentId}:hb`,
   lock: (agentId: string) => `agent:${agentId}:lock`,
+  zonesAvailable: 'zones:available',
 } as const;

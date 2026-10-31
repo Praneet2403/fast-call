@@ -116,6 +116,7 @@ describe('Fleet', () => {
     ingestUrl: 'off',
     callsPerMin: 0,
     apiUrl: '',
+    chaos: { killPct: 0.1, killAtSec: 0, reviveAfterSec: 0, dropPct: 0, delayPct: 0, delayMs: 8000 },
   };
 
   it('pings each agent roughly once per interval', () => {
@@ -128,6 +129,29 @@ describe('Fleet', () => {
     const expected = (config.agentCount * seconds * 1000) / config.pingIntervalMs;
     expect(pings.length).toBeGreaterThan(expected * 0.9);
     expect(pings.length).toBeLessThan(expected * 1.1);
+  });
+
+  it('chaos: killed units go silent, dropped pings vanish, delayed pings arrive late with old timestamps', () => {
+    const fleet = new Fleet({ ...config, chaos: { ...config.chaos, dropPct: 0.2, delayPct: 0.1, delayMs: 5000 } }, createRng(9), graph);
+    fleet.schedulePings(0);
+    const victims = new Set(fleet.kill(0.1, 0, 0));
+    expect(victims.size).toBe(20);
+    const pings: LocationPing[] = [];
+    let outOfOrder = 0;
+    const lastTs = new Map<string, number>();
+    for (let t = 0; t < 60_000; t += 1000) {
+      fleet.tick(t, {
+        send: (p) => {
+          pings.push(p);
+          if (p.ts < (lastTs.get(p.agentId) ?? -1)) outOfOrder++;
+          lastTs.set(p.agentId, Math.max(p.ts, lastTs.get(p.agentId) ?? -1));
+        },
+      });
+    }
+    expect(pings.some((p) => victims.has(p.agentId))).toBe(false);
+    expect(fleet.chaosStats.pingsDropped).toBeGreaterThan(0);
+    expect(fleet.chaosStats.pingsDelayed).toBeGreaterThan(0);
+    expect(outOfOrder).toBeGreaterThan(0); // exactly what the ingest's out-of-order guard is for
   });
 
   it('assigns roughly the configured ALS share', () => {

@@ -15,6 +15,8 @@ import type { Metrics } from './metrics.js';
 export interface Scheduler {
   matchLater(requestId: string, delayMs: number): Promise<void>;
   offerTimeout(offerId: string, delayMs: number): Promise<void>;
+  /** Sweeper re-enqueue: deduplicated per time window, so repeated sweeps don't pile up jobs. */
+  matchRescue(requestId: string): Promise<void>;
 }
 
 export type MatchOutcome =
@@ -132,10 +134,12 @@ export class Dispatcher {
 
   async handleCrewStatus(data: CrewStatusJobData): Promise<void> {
     const call = await this.repo.get(data.requestId);
-    // Ignore reports about calls this unit isn't (or is no longer) assigned to.
-    if (!call || call.assignedAgentId !== data.agentId) return;
-    // After a cancellation the crew is released: only "I'm free again" still counts.
-    if (call.state === 'CANCELLED' && data.status !== 'AVAILABLE') return;
+    // Reports about a call this unit no longer holds (cancelled, or reassigned after it went silent)
+    // don't move the call. But "I'm free again" always counts, or the unit would be stuck forever.
+    if (!call || call.assignedAgentId !== data.agentId || call.state === 'CANCELLED') {
+      if (data.status === 'AVAILABLE') await this.fleet.setCrewStatus(data.agentId, 'AVAILABLE', data.ts);
+      return;
+    }
 
     // Jobs run in parallel, so reports can be processed out of order. Walk the call forward to the
     // reported step (AT_SCENE before EN_ROUTE applies both); a late, older report changes nothing.
@@ -151,6 +155,27 @@ export class Dispatcher {
       if (step.state === 'COMPLETED') this.metrics.callCompleted();
     }
     await this.fleet.setCrewStatus(data.agentId, data.status, data.ts);
+  }
+
+  /**
+   * The unit driving to this call has gone silent (no GPS heartbeat). Send someone else.
+   * Calls already ARRIVED are left alone: the crew is with the patient, not lost.
+   */
+  async reassignLostUnit(requestId: string, agentId: string): Promise<boolean> {
+    const res = await this.repo.transition(requestId, 'MATCHING', {
+      reason: `assigned unit ${agentId} went silent (no GPS heartbeat); reassigning`,
+      agentId,
+      onlyFrom: ['ASSIGNED', 'EN_ROUTE'],
+    });
+    if (!res.applied) return false;
+    // OFFLINE until the unit itself reports AVAILABLE again; it is never offered calls meanwhile.
+    await this.fleet.setStatus(agentId, 'OFFLINE');
+    await this.fleet.publish({
+      type: 'offer.withdrawn', offerId: null, agentId, requestId, reason: 'reassigned: lost contact with unit',
+    });
+    await this.scheduler.matchLater(requestId, 0);
+    this.metrics.reassigned();
+    return true;
   }
 
   /** Side effects after an offer is settled (exactly once, by whoever won the race). */

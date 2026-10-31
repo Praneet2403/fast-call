@@ -87,6 +87,14 @@ export class FleetStore {
     return accepted;
   }
 
+  /** Publish per-zone free-unit counts for the dispatcher (Day 6 scoring). Atomic swap via MULTI. */
+  async writeZones(zones: [cell: string, available: number, units: number][]): Promise<void> {
+    const tx = this.redis.multi().del(KEYS.zonesAvailable);
+    const flat = zones.flatMap(([cell, available]) => [cell, String(available)]);
+    if (flat.length) tx.hset(KEYS.zonesAvailable, ...flat);
+    await tx.exec();
+  }
+
   /** Reads the whole live fleet in one pipeline (4 commands). */
   async readFleet(): Promise<RawFleet> {
     const results = await this.redis

@@ -7,6 +7,7 @@ export class Metrics {
   expiries = 0;
   completed = 0;
   noUnitRetries = 0;
+  reassignments = 0;
   private latencies: number[] = [];
   private readonly ringHits = new Map<number, number>();
 
@@ -35,6 +36,9 @@ export class Metrics {
   noUnitFree(): void {
     this.noUnitRetries++;
   }
+  reassigned(): void {
+    this.reassignments++;
+  }
 
   /** Nearest-rank percentiles of decision latency (ms). */
   latency(): { p50: number; p95: number; p99: number; n: number } {
@@ -48,7 +52,7 @@ export class Metrics {
     const rings = [...this.ringHits].map(([km, n]) => `${km}km:${n}`).join(' ');
     return (
       `offers=${this.offers} acks=${this.acks} timeouts=${this.timeouts} unable=${this.unables} ` +
-      `expired=${this.expiries} completed=${this.completed} noUnitRetries=${this.noUnitRetries} ` +
+      `expired=${this.expiries} completed=${this.completed} reassigned=${this.reassignments} noUnitRetries=${this.noUnitRetries} ` +
       `decision p50=${l.p50.toFixed(1)}ms p95=${l.p95.toFixed(1)}ms p99=${l.p99.toFixed(1)}ms (n=${l.n}) rings[${rings}]`
     );
   }

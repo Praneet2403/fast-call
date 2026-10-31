@@ -46,6 +46,27 @@ describe.skipIf(!sql)('request API', () => {
     await sql?.end();
   });
 
+  it('reports ready (200) when Redis and Postgres both answer', async () => {
+    const res = await app!.inject({ method: 'GET', url: '/ready' });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().checks.map((c: { ok: boolean }) => c.ok)).toEqual([true, true]);
+  });
+
+  it('reports not ready (503) with per-dependency detail when Redis is unreachable', async () => {
+    const deadRedis = new FleetStore('redis://127.0.0.1:1/0', 15); // nothing listens on port 1
+    const app2 = await buildServer(
+      { port: 0, host: '127.0.0.1', redisUrl: '', heartbeatTtlSec: 15, snapshotIntervalMs: 60_000 },
+      { store: deadRedis, requests: new RequestRepo(sql!), queue },
+    );
+    const res = await app2.inject({ method: 'GET', url: '/ready' });
+    expect(res.statusCode).toBe(503);
+    const checks = res.json().checks as { name: string; ok: boolean }[];
+    expect(checks.find((c) => c.name === 'postgres')!.ok).toBe(true);
+    expect(checks.find((c) => c.name === 'redis')!.ok).toBe(false);
+    await app2.close();
+    deadRedis.redis.disconnect();
+  });
+
   it('creates a call (201), enqueues one match job, and sets Location', async () => {
     const res = await post(body, { 'idempotency-key': key() });
     expect(res.statusCode).toBe(201);

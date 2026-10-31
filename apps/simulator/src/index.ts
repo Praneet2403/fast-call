@@ -57,6 +57,18 @@ console.log(
 
 fleet.schedulePings(startedAt);
 
+let scheduledKillDone = false;
+function killUnits() {
+  const victims = fleet.kill(config.chaos.killPct, Date.now(), config.chaos.reviveAfterSec * 1000);
+  const onCalls = victims.filter((id) => fleet.agents.find((a) => a.id === id)!.mission).length;
+  console.log(
+    `[sim] CHAOS: killed ${victims.length} unit devices (${onCalls} of them mid-call)` +
+      (config.chaos.reviveAfterSec ? `, reviving in ${config.chaos.reviveAfterSec}s` : ', permanently'),
+  );
+}
+// `kill -USR2 <pid>` kills CHAOS_KILL_PCT of the fleet on demand, for live demos.
+process.on('SIGUSR2', killUnits);
+
 const timer = setInterval(() => {
   const now = Date.now();
   const stats = fleet.tick(now, sink);
@@ -72,11 +84,19 @@ const timer = setInterval(() => {
       `[sim] t=${Math.round((now - startedAt) / 1000)}s pings/s=${(pingsSinceLog / secs).toFixed(1)} ` +
         `sent=${sink.sent} dropped=${sink.dropped} maxStep=${maxStepSinceLog.toFixed(1)}m outOfBounds=${outOfBounds} ` +
         `${sample.id}@${sample.position.lat.toFixed(5)},${sample.position.lng.toFixed(5)} ` +
-        `calls created=${callSender.created} replayed=${callSender.replayed} failed=${callSender.failed}`,
+        `calls created=${callSender.created} replayed=${callSender.replayed} failed=${callSender.failed}` +
+        (fleet.chaosStats.dead || fleet.chaosStats.pingsDropped || fleet.chaosStats.pingsDelayed
+          ? ` chaos dead=${fleet.chaosStats.dead} dropped=${fleet.chaosStats.pingsDropped} delayed=${fleet.chaosStats.pingsDelayed}`
+          : ''),
     );
     lastLogAt = now;
     pingsSinceLog = 0;
     maxStepSinceLog = 0;
+  }
+
+  if (config.chaos.killAtSec > 0 && !scheduledKillDone && now - startedAt >= config.chaos.killAtSec * 1000) {
+    scheduledKillDone = true;
+    killUnits();
   }
 
   if (config.durationSec > 0 && now - startedAt >= config.durationSec * 1000) shutdown();

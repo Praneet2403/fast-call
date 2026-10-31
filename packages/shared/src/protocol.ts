@@ -132,6 +132,9 @@ export type CallRow = [
   createdAt: Timestamp,
 ];
 
+/** Coverage per H3 zone: how many units are free in it right now, and how many are in it at all. */
+export type ZoneRow = [cell: string, available: number, units: number];
+
 export interface FleetStats {
   total: number;
   available: number;
@@ -141,6 +144,9 @@ export interface FleetStats {
   /** Age of each unit's latest location: now − lastSeenAt. */
   freshnessP50Ms: number;
   freshnessP95Ms: number;
+  /** Service-area zones with no free unit inside them right now. */
+  uncoveredZones: number;
+  totalZones: number;
 }
 
 export interface CallStats {
@@ -150,6 +156,11 @@ export interface CallStats {
   completedLastHour: number;
   expiredLastHour: number;
   cancelledLastHour: number;
+  /**
+   * Calls whose crew is on scene but whose unit has gone silent. The system deliberately does not
+   * send a second ambulance (the crew is probably with the patient), so a human must look.
+   */
+  needsAttention: string[];
 }
 
 export interface FleetSnapshotMessage {
@@ -159,6 +170,7 @@ export interface FleetSnapshotMessage {
   agents: FleetRow[];
   calls: CallRow[];
   callStats: CallStats;
+  zones: ZoneRow[];
 }
 
 export type DashboardMessage = FleetSnapshotMessage;
